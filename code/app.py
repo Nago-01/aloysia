@@ -6,10 +6,13 @@ from PyPDF2 import PdfReader
 from docx import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from datetime import datetime
-from .db import VectorDB
+from code.db import VectorDB
+from functools import lru_cache
+from hashlib import md5
 
 
 # Load environment variables
@@ -67,9 +70,7 @@ def extract_docx_metadata(file_path: Path) -> Dict[str, Any]:
 def extract_text_with_page_numbers(file_path: Path, ext: str) -> List[Dict[str, Any]]:
     """
     Extract text from documents while preserving page numbers.
-
-    Returns:
-        List of dictionaries with 'content', 'page_number' and 'section'
+    Create larger chunks with better context
     """
     chunks = []
 
@@ -88,6 +89,7 @@ def extract_text_with_page_numbers(file_path: Path, ext: str) -> List[Dict[str, 
         doc = Document(file_path)
         current_section = "Introduction"
         page_num = 1
+        accumulated_text = []
 
         for para in doc.paragraphs:
             text = para.text.strip()
@@ -96,26 +98,58 @@ def extract_text_with_page_numbers(file_path: Path, ext: str) -> List[Dict[str, 
 
             # Detecting section headers
             if para.style.name.startswith("Heading"):
+                if accumulated_text:        
+                    chunks.append({
+                        "content": "\n".join(accumulated_text),
+                        "page_number": page_num,
+                        "section": current_section
+                    })
+                    accumulated_text = []
+
                 current_section = text
+                continue
 
-            chunks.append({
-                "content": text,
-                "page_number": page_num,
-                "section": current_section
-
-            })
+            accumulated_text.append(text)
 
             # Rough page estimation
-            if len(text) > 500:
+            if len("\n".join(accumulated_text)) >= 800:
+                chunks.append({
+                    "content": "\n".join(accumulated_text),
+                    "page_number": page_num,
+                    "section": current_section
+                })
+                accumulated_text = []
                 page_num += 1
+
+        if accumulated_text:
+            chunks.append({
+                "content": "\n".join(accumulated_text),
+                "page_number": page_num,
+                "section": current_section
+            })
 
     elif ext in (".txt", ".md"):
         text = file_path.read_text(encoding="utf-8")
-        chunks.append({
-            "content": text.strip(),
-            "page_number": 1,
-            "section": "Full Documentation"
-        })
+
+        if len(text) > 1000:
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=800,
+                chunk_overlap=200
+            )
+            text_chunks = splitter.split_text(text)
+            for i, chunk in enumerate(text_chunks, 1):
+                chunks.append({
+                    "content": chunk,
+                    "page_number": i,
+                    "section": "Full Documentation"
+                })
+            else:
+                chunks.append({
+                    "content": text.strip(),
+                    "page_number": 1,
+                    "section": "Full Documentation"
+                })
+
 
     return chunks
 
@@ -169,7 +203,6 @@ def load_publication(pub_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
         
         # Process each file
         for idx, file in enumerate(files, 1):
-            print(f"\nProcessing file {idx}/{len(files)}: {file.name}")
             ext = file.suffix.lower()
 
            # Extract document-level metadata
@@ -207,9 +240,7 @@ def load_publication(pub_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
                     }
                 })
         
-        print("\n" + "="*50)
-        print(f"Successfully loaded {len(results)} document chunks.")
-        print("="*50 + "\n")
+        print(f"\nSuccessfully loaded {len(results)} document chunks.")
 
         return results
 
@@ -217,6 +248,8 @@ def load_publication(pub_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
         print(f"\nError loading documents: {e}")
         traceback.print_exc()
         raise IOError(f"Error loading documents: {e}") from e
+
+_search_cache = {}
 
 
 class QAAssistant:
@@ -268,7 +301,8 @@ class QAAssistant:
         """
         # Check for Groq API key
         if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
-            model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+            model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            # print(f"Using Google Gemini model: {model_name}")
             return ChatGoogleGenerativeAI(
                 google_api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
                 model=model_name,
@@ -276,6 +310,7 @@ class QAAssistant:
             )
         elif os.getenv("GROQ_API_KEY"):
             model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+            # print(f"Using Groq model: {model_name}")
             return ChatGroq(
                 api_key=os.getenv("GROQ_API_KEY"),
                 model=model_name,
@@ -320,8 +355,28 @@ class QAAssistant:
         }
     
 
+    def search_with_cache(self, query: str, n_results: int = 5):
+        """Caching using module-level dict"""
+        query_hash = md5(query.encode()).hexdigest()
+        
+        if query_hash in _search_cache:
+            print(f"Cache hit for: {query[:50]}...")
+            return _search_cache[query_hash]
+        
+        print(f"Searching for: {query[:50]}...")
+        results = self.db.search(query, n_results, use_reranking=True)
+
+
+        if len(_search_cache) >= 100:
+            _search_cache.pop(next(iter(_search_cache)))
+
+        _search_cache[query_hash] = results
+        return results
+
+    
+
 def main():
-    """Main function to demonstrate the QA assistant."""
+    """Main function to demonstrate Aloysia's RAG system."""
     pass
 
 if __name__ == "__main__":

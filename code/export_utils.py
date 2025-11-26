@@ -4,10 +4,10 @@ Export utilities for generating LaTex, Word, and PDF documents.
 
 from typing import List, Dict, Any
 from docx import Document
-from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from pathlib import Path
 from datetime import datetime
+
 
 
 def generate_latex_bibliography(bibliography: List[Dict[str, Any]], output_path: str = "bibliography.tex") -> str:
@@ -354,6 +354,3 @@ The review examines key themes, methodologies, and findings across the included 
     output = Path(output_path)
     output.write_text(md_content, encoding="utf-8")
     return str(output.absolute())
-
-
-

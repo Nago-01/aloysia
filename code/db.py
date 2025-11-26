@@ -16,7 +16,7 @@ class VectorDB:
             embedding_model: HuggingFace model name for embeddings
         """
         self.collection_name = collection_name or os.getenv(
-            "CHROMA_COLLECTION_NAME", "rag_documents"
+            "CHROMA_COLLECTION_NAME", "aloysia_knowledge"
         )
         self.embedding_model_name = embedding_model or os.getenv(
             "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
@@ -39,6 +39,8 @@ class VectorDB:
 
         print(f"Vector database initialized with collection: {self.collection_name}")
 
+
+
     def chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
         """Chunk text using RecursiveCharacterTextSplitter."""
         splitter = RecursiveCharacterTextSplitter(
@@ -59,10 +61,13 @@ class VectorDB:
             text = doc.get("content", "")
             metadata = doc.get("metadata", {})
 
-            # Chunk the text
-            chunks = self.chunk_text(text)
 
-            # Create unique IDs and enriched metadata for each chunk
+            if len(text) < 1000:
+                chunks = [text]
+            else:
+                chunks = self.chunk_text(text, chunk_size=800)
+
+            # Unique IDs and enriched metadata for each chunk
             chunk_ids = []
             chunk_metadatas = []
 
@@ -91,7 +96,7 @@ class VectorDB:
                 ids=chunk_ids
             )
         
-        print("All documents processed and added to the vector database.")
+        print(f"{len(documents)} document chunks have been addedto the Vector DB")
 
 
 

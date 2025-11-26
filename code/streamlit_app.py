@@ -5,17 +5,24 @@ Army Green Theme with Dark Mode Support
 
 import streamlit as st
 from pathlib import Path
-import os, sys
-from datetime import datetime
-from typing import List, Dict, Any
+import sys, traceback
+import os
+import warnings
 
 
-# Importing RAG components
+# Suppressing warnings
+os.environ["GLOG_minloglevel"] = "2"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+# Just to ensure code is in the path just once
 project_root = (Path(__file__).resolve().parent.parent)
-sys.path.insert(0, str(project_root))
-from code.agent import create_agentic_rag, initialize_rag
-from code.app import load_publication
-from langchain_core.messages import HumanMessage
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+
 
 # Page configuration
 st.set_page_config(
@@ -198,6 +205,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
@@ -214,63 +223,97 @@ if 'stats' not in st.session_state:
         'queries': 0
     }
 
+
 def initialize_agent():
-    """Initialize the RAG agent"""
+    """Initialize the RAG agent with appropriate caching"""
     if st.session_state.agent is None:
         with st.spinner("Initializing Aloysia..."):
             try:
+                from code.rag_init import initialize_rag
+                initialize_rag()
+
+
+                from code.agent import create_agentic_rag
                 st.session_state.agent = create_agentic_rag()
                 st.session_state.rag_initialized = True
+
+                st.success("Aloysia initialized successfully!")
                 return True
+
             except Exception as e:
                 st.error(f"Error initializing agent: {str(e)}")
+                traceback.print_exc()
                 return False
     return True
+
+
 
 
 def load_document_from_folder(folder_path: Path):
     """Load documents from a folder"""
     try:
+        from code.app import load_publication
+
+
         docs = load_publication(pub_dir=folder_path)
         st.session_state.documents = docs
 
+        unique_sources = set([d['metadata']['source'] for d in docs])
+
         # Update stats
-        st.session_state.stats['documents'] = len(set([d['metadata']['source'] for d in docs]))
-        st.session_state.stats['pages'] = sum([d['metadata']['page_count'] for d in docs])
+        st.session_state.stats['documents'] = len(unique_sources)
+        st.session_state.stats['pages'] = sum([d['metadata'].get('page_count', 0) for d in docs])
 
         return docs
     except Exception as e:
         st.error(f"Error loading documents: {str(e)}")
+        traceback.print_exc()
         return []
     
 
 def process_query(query: str):
     """Process user query through the agent"""
+
+    print(f"Processing query: {query}")
+    print(f"{'='*50}\n")
+
     if not st.session_state.agent:
         if not initialize_agent():
-            return " Failed to initialize agent. Please check your configuration."
-    
+            return "Failed to initialize agent."
+
     try:
+        from langchain_core.messages import HumanMessage
+
         # Add user message to conversation
         st.session_state.messages.append({
             "role": "user",
             "content": query
         })
 
-        # Create message for agent
-        conversation_messages = [
-            HumanMessage(content=msg["content"])
-            for msg in st.session_state.messages
-        ]
+        initial_state = {
+            "messages": [HumanMessage(content=query)],
+            "quality_passed": True,
+            "loop_count": 0,
+            "original_query": query
+        }
+
+        print("Invoking agent...")
 
         # Invoke agent
-        result = st.session_state.agent.invoke({
-            "messages": conversation_messages
-        })
+        result = st.session_state.agent.invoke(initial_state)
+
+        if not result.get("messages"):
+            return "I am sorry, but I couldn't generate a response. Please try again"
 
         # Get response
         final_message = result["messages"][-1]
         response = final_message.content
+
+        print(f"Preview: {response[:100]}...")
+
+        if not response or len(response.strip()) < 5:
+            response = "I couldn't find enough information to answer your question. Could you rephrase it or ask something else?"
+
 
         # Add assistant response
         st.session_state.messages.append({
@@ -284,7 +327,13 @@ def process_query(query: str):
         return response
     
     except Exception as e:
-        return f"Error: {str(e)}"
+        error_trace = traceback.format_exc()
+        print(f"Process Query Error:\n{error_trace}")
+
+        if "tool_use_failed" in str(e):
+            return "I encountered an issue with tool execution. Please try:\n1. Rephrasing your question\n2. Making it more specific\n3. Breaking it into smaller questions"
+        else:
+            return f"An error occurred: {str(e)}\n\nPlease try again or rephrase your question."
     
 
 # Header
@@ -308,11 +357,12 @@ with st.sidebar:
         "Upload PDF, DOCX, TXT, or MD files",
         type=["pdf", "docx", "txt", "md"],
         accept_multiple_files=True,
+        key="main_uploader",
         help="Upload research papers, documents, or text files"
     )
 
-    if uploaded_files:
-        with st.spinner("Processing uploaded documents..."):
+    if uploaded_files and st.button("Process Uploaded Files"):
+        with st.spinner("Processing uploaded files..."):
             # Save uploaded files temporarily
             upload_dir = Path("./uploaded_docs")
             upload_dir.mkdir(exist_ok=True)
@@ -320,7 +370,6 @@ with st.sidebar:
             for uploaded_file in uploaded_files:
                 file_path = upload_dir / uploaded_file.name
                 with open(file_path, "wb") as f:
-                    # UploadedFile supports getbuffer(); fall back to read() if needed
                     try:
                         f.write(uploaded_file.getbuffer())
                     except Exception:
@@ -332,16 +381,38 @@ with st.sidebar:
             if docs:
                 st.success(f"Loaded {len(docs)} document chunks")
 
-                # Initialize RAG with documents
-                if initialize_agent():
-                    initialize_rag()
+                
+                try:
+                    if initialize_agent():
+                        from code.rag_init import initialize_rag
+                        rag = initialize_rag()
+                        st.success("Documents added to knowledge base")
+                except Exception as e:
+                    st.error(f"Error initializing agent: {str(e)}")
+                    traceback.print_exc()
 
     # Show loaded documents
     st.subheader("Loaded Documents")
-    if st.session_state.documents:
-        unique_sources = set([d['metadata']['source'] for d in st.session_state.documents])
-        for source in unique_sources:
-            st.text(f"{source}")
+
+    if st.session_state.get("rag_initialized", False):
+        try:
+            from code.rag_init import get_rag
+            rag = get_rag()
+            
+            all_results = rag.db.collection.get()
+            unique_sources = set()
+
+            for metadata in all_results.get("metadatas", [])[:10]:
+                source = metadata.get("source")
+                if source:
+                    unique_sources.add(source)
+            if unique_sources:
+                for source in sorted(unique_sources):
+                    st.text(f"{source}")
+            else:
+                st.info("No documents loaded yet")
+        except Exception as e:
+            st.info("Upload files to get started")
     else: 
         st.info("No documents loaded. Upload files to get started.")
 
@@ -364,13 +435,14 @@ with st.sidebar:
     
     st.divider()
 
+
     #Integrations
     st.title("Integrations")
     st.markdown("""
     **Coming Soon:**
     - WhatsApp Bot
     - Telegram Bot
-    - API Access="
+    - API Access
     """)
 
     st.divider()
@@ -380,6 +452,8 @@ with st.sidebar:
         st.selectbox("LLM Provider", ["Gemini", "Groq"])
         st.slider("Search Results", 1, 10, 15)
         st.checkbox("Enable Re-ranking", value=True)
+        st.checkbox("Enable Web Search", value=True, help="Allow agent to search the web when needed")
+
 
 
 # Main content area

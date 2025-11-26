@@ -24,7 +24,6 @@ Run `streamlit run streamlit_app.py` → full chat + tools + export UI
 | Real-time web search          | Done  | Tavily-powered (when documents lack info) |
 | Streamlit Web UI              | Done  | Chat + sidebar tools + dark theme |
 | Persistent ChromaDB           | Done  | Knowledge survives restarts |
-| CLI & API-ready               | Done  | Run via `python -m code.agent` or import |
 
 ---
 
@@ -56,7 +55,7 @@ aloysia/
 │   ├── rag_init.py         # Lazy RAG initialization (fixes circular imports)
 │   ├── agent.py            # LangGraph agent, all 9 tools, workflow
 │   ├── export_utils.py     # Word/LaTeX/Markdown exporters
-│   ├── streamlit_app.py    # Gorgeous web UI (chat + tools + uploads)
+│   ├── streamlit_app.py    # Web UI (chat + tools + uploads)
 │   └── __init__.py
 ├── data/                   # Put your PDFs, DOCX, TXT, MD here
 ├── chroma_db/              # Auto-created persistent vector store
@@ -157,6 +156,8 @@ You: What’s the latest WHO stance on AMR?
 Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths projected to reach 10M by 2050..."
 ```
 
+
+
 ### Example Queries (Natural Language)
 
 | Ask This | Aloysia Does This |
@@ -168,6 +169,8 @@ Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths proje
 | `"Write a review on PCOS"` | `generate_literature_review` + synthesis |
 | `"Save review as Markdown"` | `export_literature_review(format="md")` |
 | `"Calculate 68% of 250 patients"` | `calculator` |
+
+
 
 
 ### Tools Available to the Agent
@@ -183,6 +186,8 @@ Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths proje
 | `web_search` | Only after confirming with user |
 | `calculator` | Math expressions |
 | `parallel_document_analysis` | Multi-document deep dives |
+
+
 
 
 ### Tech Stack
@@ -202,6 +207,8 @@ Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths proje
 
 
 
+
+
 ## For Health-Tech and Research
 - Clinical trial document analysis
 - Guideline compliance checking
@@ -217,5 +224,4 @@ Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths proje
 
 ## License
 MIT
-© Nago 2025
 

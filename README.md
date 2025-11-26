@@ -1,25 +1,34 @@
-# Aloysia — Academic Research Agent with Agentic RAG
+# Aloysia — Agentic Research Assistant with Full-Stack RAG
 
-**Aloysia** is a full-stack, agentic literature research assistant that goes beyond simple Q&A. It ingests academic documents, builds a **page-aware knowledge base**, and uses a **LangGraph-powered agent** to autonomously decide when to search internal documents, compare sources, generate literature reviews, export bibliographies, or fetch real-time web data — all with **publication-grade citations**.
+**Aloysia** is a production-ready, agentic research assistant that turns your PDFs, DOCX, and text files into a **page-aware, citation-rich knowledge base**. Powered by **LangGraph**, it autonomously decides when to search documents, compare papers, generate literature reviews, export bibliographies, or fetch real-time web data, all with **academic-grade citations**.
 
-Built for researchers, clinicians, and students in health-tech and life sciences, Aloysia turns scattered PDFs and papers into structured, citable insights — automatically.
+Built for researchers, clinicians, students, and health-tech teams.
+
+---
+
+## Live Demo & Web UI
+**Now with a beautiful Streamlit web interface!**  
+Run `streamlit run streamlit_app.py` → full chat + tools + export UI
 
 ---
 
 ## What Aloysia Does
 
-| Capability | Description |
-|----------|-----------|
-| **Document Ingestion** | Loads `.pdf`, `.docx`, `.txt`, `.md` with **rich metadata extraction** (title, author, creation date, page count) |
-| **Page-Level RAG** | Splits documents into chunks, embeds with `all-MiniLM-L6-v2`, stores **per-chunk metadata** (page, section, source) |
-| **Cross-Encoder Reranking** | Re-ranks retrieval results for higher relevance using `ms-marco-MiniLM-L-6-v2` |
-| **Agentic Reasoning** | LangGraph state machine decides tool use: RAG → Web → Compare → Export |
-| **8 Specialized Tools** | `rag_search`, `compare_documents`, `generate_bibliography`, `export_literature_review`, etc. |
-| **Multi-Format Export** | Generates **Word**, **LaTeX**, **Markdown** bibliographies and full **literature reviews** |
-| **Web Integration** | Tavily-powered real-time search for current guidelines, news, or updates |
-| **Citation Tracking** | Every claim includes: `Source: amr.pdf, Page: 5, Section: Mechanisms` |
+| Feature                        | Status | Description |
+|-------------------------------|-------|-----------|
+| Page-level RAG + citations    | Done  | Every answer includes `Source: file.pdf, Page: 12` |
+| Cross-encoder reranking       | Done  | `ms-marco-MiniLM-L-6-v2` for maximum relevance |
+| Agentic workflow (LangGraph)  | Done  | Autonomously chooses tools |
+| 9 Smart Tools                 | Done  | Search, compare, review, export, web search, calculator |
+| Export bibliography & reviews | Done  | Word • LaTeX • Markdown |
+| Real-time web search          | Done  | Tavily-powered (when documents lack info) |
+| Streamlit Web UI              | Done  | Chat + sidebar tools + dark theme |
+| Persistent ChromaDB           | Done  | Knowledge survives restarts |
+| CLI & API-ready               | Done  | Run via `python -m code.agent` or import |
 
 ---
+
+
 
 ## How It Works (Agentic Workflow)
 
@@ -42,25 +51,26 @@ graph TD
 ```bash
 aloysia/
 ├── code/
-│   ├── app.py              # Core RAG assistant + agent initialization
-│   ├── db.py               # VectorDB with Chroma, embeddings, reranking
-│   ├── export_utils.py     # Bibliography & literature review exporters
-│   ├── agent.py            # LangGraph agent, tools, workflow
-│   ├── __init__.py
-│   └── .env                # API keys & config
-├── data/                   # Drop your PDFs, DOCX, etc. here
-│   ├── amr.pdf
-│   ├── dysmenorrhea.docx
-│   └── guidelines.md
-├── chroma_db/              # Persistent vector store (auto-created)
-└── requirements.txt
+│   ├── app.py              # Document loading, metadata extraction, QAAssistant
+│   ├── db.py               # VectorDB (Chroma + sentence-transformers + reranking)
+│   ├── rag_init.py         # Lazy RAG initialization (fixes circular imports)
+│   ├── agent.py            # LangGraph agent, all 9 tools, workflow
+│   ├── export_utils.py     # Word/LaTeX/Markdown exporters
+│   ├── streamlit_app.py    # Gorgeous web UI (chat + tools + uploads)
+│   └── __init__.py
+├── data/                   # Put your PDFs, DOCX, TXT, MD here
+├── chroma_db/              # Auto-created persistent vector store
+├── requirements.txt        # Dependencies
+└── .env                    # API keys & config
 ```
+
+
 
 ## Installation
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/Nago-01/rag_assistant.git
-cd rag_assistant
+git clone https://github.com/Nago-01/aloysia.git
+cd aloysia
 ```
 
 ### 2. Create virtual environment
@@ -109,9 +119,18 @@ data/
 ```
 
 ### Run Aloysia
+#### CLI Agent
 ```bash
 python -m code.agent
 ```
+
+#### Streamlit Web UI
+```bash
+streamlit run streamlit_app.py
+```
+→ Upload files via sidebar → chat + use tools
+
+
 
 ### Example Session
 ```
@@ -132,13 +151,13 @@ PCOS.docx:
    "Metformin and lifestyle intervention improved ovulation in 68%..."
 
 You: Write a literature review on antimicrobial resistance and export as Word
-Assistant: Literature review exported to WORD: literature_review_antimicrobial_resistance.docx
+Aloysia: Literature review exported to WORD: literature_review_antimicrobial_resistance.docx
 
 You: What’s the latest WHO stance on AMR?
-Assistant: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths projected to reach 10M by 2050..."
+Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths projected to reach 10M by 2050..."
 ```
 
-### Tools and Commands (Natural Language)
+### Example Queries (Natural Language)
 
 | Ask This | Aloysia Does This |
 |----------|-------------------|
@@ -149,6 +168,21 @@ Assistant: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths pro
 | `"Write a review on PCOS"` | `generate_literature_review` + synthesis |
 | `"Save review as Markdown"` | `export_literature_review(format="md")` |
 | `"Calculate 68% of 250 patients"` | `calculator` |
+
+
+### Tools Available to the Agent
+
+| Tool | Trigger Phrase Example |
+|------|------------------------|
+| `rag_search` | Any factual question |
+| `compare_documents` | """compare X and Y"", ""difference between...""" |
+| `generate_bibliography` | """show sources"", ""list documents""" |
+| `generate_literature_review` | """write a review on..."", ""summarize research""" |
+| `export_bibliography` | """export references as Word""" |
+| `export_literature_review` | """save review as PDF/Markdown""" |
+| `web_search` | Only after confirming with user |
+| `calculator` | Math expressions |
+| `parallel_document_analysis` | Multi-document deep dives |
 
 
 ### Tech Stack
@@ -164,6 +198,7 @@ Assistant: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths pro
 | **Export** | python-docx, LaTeX, Markdown |
 | **Web Search** | Tavily |
 | **CLI** | Built-in interactive loop |
+| **Frontend** | Streamlit |
 
 
 
@@ -173,8 +208,14 @@ Assistant: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths pro
 - Pharmacovigilance reporting
 - Medical education content generation
 - Real-time drug policy updates
+- Rapid literature reviews from documents
+- Compare conflicting guidelines side-by-side
+- Generate conference-ready bibliographies in multiple formats
+- Stay updated with real-time WHO/CDC policy shifts
+- Export citable Word/LaTeX documents instantly
 
 
 ## License
 MIT
+© Nago 2025
 

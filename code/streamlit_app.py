@@ -27,7 +27,6 @@ if str(project_root) not in sys.path:
 # Page configuration
 st.set_page_config(
     page_title="Aloysia",
-    page_icon=" ",
     layout="wide",
     initial_sidebar_state="expanded"
 )

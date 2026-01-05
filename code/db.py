@@ -96,7 +96,7 @@ class VectorDB:
                 ids=chunk_ids
             )
         
-        print(f"{len(documents)} document chunks have been addedto the Vector DB")
+        print(f"{len(documents)} document chunks have been added to the vector database.")
 
 
 

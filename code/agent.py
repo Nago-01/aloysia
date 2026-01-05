@@ -719,7 +719,7 @@ def llm_node(state: AgentState):
             - Step 2: If no results, respond: "I couldn't find information about this in your documents. Would you like me to search the web instead?"
             - Step 3: Only call 'web_search' if the user confirms or explicitly asks for it        
 
-        **CITATION RULES**
+        **CITATION GUARDRAILS**
         - ALWAYS cite page numbers and sources in your answer
         - Format: "According to [Source: amr.pdf, Page: 5], ..."
         - When comparing, clearly state differences and similarities

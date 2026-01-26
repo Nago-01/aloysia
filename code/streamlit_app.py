@@ -6,8 +6,10 @@ Army Green Theme with Dark Mode Support
 import streamlit as st
 from pathlib import Path
 import sys, traceback
-import os
+import os, chromadb
 import warnings
+from PyPDF2 import PdfReader
+from docx import Document
 
 
 # Suppressing warnings
@@ -423,7 +425,7 @@ with st.sidebar:
     if st.button("Compare Documents", use_container_width=True):
         st.session_state.page = "compare"
     
-    if st.button("Generate Bibliography", use_container_width=True):
+    if st.button("Generate Bibliography", use_container_width=True, key="sidebar_bibliography_btn"):
         st.session_state.page = "bibliography"
     
     if st.button("Literature Review", use_container_width=True):
@@ -583,7 +585,7 @@ with tab3:
     with col2:
         export_format = st.selectbox("Format", ["Word", "LaTeX", "Markdown"])
     
-    if st.button("Generate Bibliography", use_container_width=True):
+    if st.button("Generate Bibliography", use_container_width=True, key="tab_bibliography_btn"):
         with st.spinner("Generating bibliography..."):
             response = process_query("Generate bibliography")
             st.markdown(response)

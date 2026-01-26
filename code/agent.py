@@ -10,6 +10,7 @@ from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from concurrent.futures import ThreadPoolExecutor
 from tavily import TavilyClient
+import arxiv
 
 
 
@@ -571,6 +572,79 @@ def calculator(expression: str) -> str:
         return f"Error calculating '{expression}': {str(e)}"
 
 
+@tool
+def arxiv_search(query: str, max_results: int = 5, save_to_db: bool = False) -> str:
+    """
+    Search arXiv for academic papers on a topic.
+    
+    Use when user asks for:
+    - "Find papers on X"
+    - "What's the latest research on X?"
+    - "Search arXiv for X"
+    - "Find academic papers about X"
+    
+    Args:
+        query: Search query for arXiv
+        max_results: Maximum number of papers to return (default: 5)
+        save_to_db: If True, saves papers to local vector DB for future retrieval
+        
+    Returns:
+        Formatted list of papers with titles, authors, abstracts, and arXiv links
+    """
+    try:
+        # Create arXiv client and search
+        client = arxiv.Client()
+        search = arxiv.Search(
+            query=query,
+            max_results=max_results,
+            sort_by=arxiv.SortCriterion.Relevance
+        )
+        
+        results = list(client.results(search))
+        
+        if not results:
+            return f"No papers found on arXiv for '{query}'."
+        
+        # Format results
+        output = f"**arXiv Search Results for '{query}'**\n"
+        output += "=" * 50 + "\n\n"
+        
+        papers_data = []
+        for i, paper in enumerate(results, 1):
+            output += f"**{i}. {paper.title}**\n"
+            output += f"   Authors: {', '.join(a.name for a in paper.authors[:3])}"
+            if len(paper.authors) > 3:
+                output += f" et al."
+            output += "\n"
+            output += f"   Published: {paper.published.strftime('%Y-%m-%d')}\n"
+            output += f"   Abstract: {paper.summary[:300]}...\n"
+            output += f"   URL: {paper.entry_id}\n"
+            output += f"   PDF: {paper.pdf_url}\n\n"
+            
+            # Collect data for potential DB storage
+            papers_data.append({
+                "title": paper.title,
+                "authors": [a.name for a in paper.authors],
+                "abstract": paper.summary,
+                "url": paper.entry_id,
+                "pdf_url": paper.pdf_url,
+                "published": paper.published.strftime('%Y-%m-%d'),
+                "categories": paper.categories
+            })
+        
+        # Optionally save to vector DB
+        if save_to_db:
+            from code.rag_init import get_rag
+            rag = get_rag()
+            docs_added = rag.db.add_arxiv_papers(papers_data)
+            output += f"\n✅ {docs_added} papers saved to local knowledge base.\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"Error searching arXiv: {str(e)}"
+
+
 def get_tools():
     """Return all available tools for the agent"""
     return [
@@ -579,6 +653,7 @@ def get_tools():
         generate_bibliography,
         web_search,
         calculator,
+        arxiv_search,
         generate_literature_review,
         parallel_document_analysis,
         export_bibliography,
@@ -636,37 +711,109 @@ def tools_node(state: AgentState):
 
 
 # Defining the agent nodes
-def _initialize_llm():
-    """Initialize the LLM based on available API keys"""
 
+# ============ MODULAR PROVIDER SYSTEM ============
+# Provider registry - order determines priority
+PROVIDER_REGISTRY = []
+_current_provider_index = 0
+
+def _build_provider_registry():
+    """Build list of available providers from environment variables"""
+    global PROVIDER_REGISTRY
+    PROVIDER_REGISTRY = []
+    
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        # print(f"Using Google Gemini model: {model_name}")
-        return ChatGoogleGenerativeAI(
-            google_api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
-            model=model_name,
-            temperature=0.0
-        )
-    elif os.getenv("GROQ_API_KEY"):
-        model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-        # print(f"Using Groq model: {model_name}")
-        return ChatGroq(
-            api_key=os.getenv("GROQ_API_KEY"),
-            model=model_name,
-            temperature=0.0
-        )
-    else:
+        PROVIDER_REGISTRY.append({
+            "name": "gemini",
+            "init": lambda: ChatGoogleGenerativeAI(
+                google_api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
+                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+                temperature=0.0
+            )
+        })
+    
+    if os.getenv("GROQ_API_KEY"):
+        PROVIDER_REGISTRY.append({
+            "name": "groq",
+            "init": lambda: ChatGroq(
+                api_key=os.getenv("GROQ_API_KEY"),
+                model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                temperature=0.0
+            )
+        })
+    
+    # Future providers can be added here (OpenAI, Anthropic, etc.)
+    
+    if not PROVIDER_REGISTRY:
         raise ValueError(
             "No valid API key found. "
             "Please set GROQ_API_KEY or GEMINI_API_KEY in your .env file"
         )
+    
+    print(f"📋 Provider Registry: {[p['name'] for p in PROVIDER_REGISTRY]}")
+
+def _get_current_provider():
+    """Get the current provider's LLM instance"""
+    global _current_provider_index
+    if not PROVIDER_REGISTRY:
+        _build_provider_registry()
+    return PROVIDER_REGISTRY[_current_provider_index]
+
+def _switch_to_next_provider():
+    """Cycle to next available provider"""
+    global _current_provider_index
+    _current_provider_index = (_current_provider_index + 1) % len(PROVIDER_REGISTRY)
+    provider = PROVIDER_REGISTRY[_current_provider_index]
+    print(f"⚡ Switching to: {provider['name']}")
+    return provider
+
+def invoke_with_fallback(messages, tools=None):
+    """
+    Invoke LLM with automatic provider switching on rate limits.
+    Cycles through all available providers before giving up.
+    """
+    global _current_provider_index
+    
+    if not PROVIDER_REGISTRY:
+        _build_provider_registry()
+    
+    attempts = len(PROVIDER_REGISTRY)
+    last_error = None
+    
+    for attempt in range(attempts):
+        provider = PROVIDER_REGISTRY[_current_provider_index]
+        try:
+            llm = provider["init"]()
+            if tools:
+                llm = llm.bind_tools(tools)
+            return llm.invoke(messages)
+            
+        except Exception as e:
+            error_str = str(e).lower()
+            last_error = e
+            
+            # Check for rate limit OR tool use errors (Gemini specific)
+            if any(err in error_str for err in ["429", "resourceexhausted", "quota", "rate", "tool_use_failed", "400"]):
+                print(f"⚠️ {provider['name']} error: {str(e)[:100]}...")
+                _switch_to_next_provider()
+                continue
+            
+            # Re-raise other errors
+            raise
+    
+    # All providers failed
+    raise Exception(f"All providers exhausted. Last error: {last_error}")
+
+def _initialize_llm():
+    """Initialize the LLM based on current provider (legacy compatibility)"""
+    provider = _get_current_provider()
+    return provider["init"]()
+# ================================================
 
 
 def llm_node(state: AgentState):
     """The agent's brain"""
-    llm = _initialize_llm()
     tools = get_tools()
-    llm_with_tools = llm.bind_tools(tools)
     
 
     messages = state["messages"]
@@ -682,7 +829,7 @@ def llm_node(state: AgentState):
             "loop_count": loop_count
         }
     
-    messages = trim_messages(messages, max_messages=8)
+    messages = trim_messages(messages, max_messages=10)
     
     # System message 
     if not any(isinstance(msg, SystemMessage) for msg in messages):
@@ -714,6 +861,11 @@ def llm_node(state: AgentState):
         5. **For math or calculations:**
             - Use 'calculator' for any mathemathical operations
 
+        6. **For academic paper search:**
+            - Use 'arxiv_search' when user asks for research papers, academic literature, or arXiv
+            - Set save_to_db=True if user wants to keep papers for future reference
+            - This searches the arXiv database directly for peer-reviewed papers
+
         **WEB SEARCH WORKFLOW:**
             - Step 1: Try 'rag_search' first
             - Step 2: If no results, respond: "I couldn't find information about this in your documents. Would you like me to search the web instead?"
@@ -732,7 +884,7 @@ def llm_node(state: AgentState):
         messages = [system_msg] + messages
     
     try:
-        response = llm_with_tools.invoke(messages)
+        response = invoke_with_fallback(messages, tools=tools)
         return {
             "messages": [response],
             "loop_count": loop_count + 1
@@ -758,7 +910,6 @@ def quality_control_agent_node(state: AgentState):
     """
     Quality Control with web search suggestion capability
     """
-    llm = _initialize_llm()
 
     # Getting the last tool results
     tool_messages = [msg for msg in state["messages"]
@@ -801,6 +952,18 @@ def quality_control_agent_node(state: AgentState):
 
         return {"quality_passed": False, "messages": [feedback]}
 
+    # To save API calls, if the tool returned results and didn't clearly fail, 
+    # trust it and skip the LLM evaluation which costs API calls
+    
+    failure_keywords = ["No relevant information found", "Error searching", "No papers found", "No results found", "Error executing"]
+    
+    # Check if ANY tool output contains failure keywords
+    has_failure = any(keyword in msg.content for msg in tool_messages for keyword in failure_keywords)
+    
+    if tool_messages and not has_failure:
+        print("QC Heuristic: Results look valid. Skipping LLM check to save quota.")
+        return {"quality_passed": True, "messages": []}
+
     eval_prompt = f"""Evaluate search results for: "{original_query}"
 
 Results Retrieved: {recent_results}
@@ -819,7 +982,7 @@ Be LENIENT: If results mention the topic or related concepts, score >= 5
 Respond with ONLY a number 1-10."""
     
     try:
-        response = llm.invoke(eval_prompt)
+        response = invoke_with_fallback(eval_prompt)
         content = response.content.strip()
         numbers = re.findall(r'\b([1-9]|10\b)', content)
 
@@ -855,7 +1018,6 @@ def synthesize_final_answer(state: AgentState):
     """
     Second Stage: Synthesize final answer with quality checks
     """
-    llm = _initialize_llm()
     messages = state["messages"]
 
     messages = trim_messages(messages, max_messages=10)
@@ -878,7 +1040,7 @@ Format: According to [Source: filename.pdf, Page: X], ...
     print("Invoking LLM for synthesis...")
 
     try:
-        response = llm.invoke(messages_with_synthesis)
+        response = invoke_with_fallback(messages_with_synthesis)
 
         content = response.content
         print(f"Synthesis Complete. Length: {len(content)} chars")
@@ -894,16 +1056,21 @@ Format: According to [Source: filename.pdf, Page: X], ...
             print("Response too long. Regenerating...")
             feedback = SystemMessage(content="Response too long. Provide a concise 200-word summary.")
             messages_with_feedback = messages_with_synthesis + [response, feedback]
-            response = llm.invoke(messages_with_feedback)
+            response = invoke_with_fallback(messages_with_feedback)
 
         return {"messages": [response]}
     
     except Exception as e:
         print(f"Synthesis Error: {e}")
-        traceback.print_exc()
-
-
-        fallback = AIMessage(content="I apologize, but I encountered an error generating generating the response. Please try rephrasing your question.")
+        
+        # FALLBACK: If synthesis fails, construct a response from the tool outputs directly
+        tool_messages = [msg for msg in messages if isinstance(msg, ToolMessage)]
+        if tool_messages:
+            last_tool_result = tool_messages[-1].content
+            fallback_content = f"**I found the following information, but couldn't generate a summary due to high traffic:**\n\n{last_tool_result}"
+            return {"messages": [AIMessage(content=fallback_content)]}
+            
+        fallback = AIMessage(content="I apologize, but I encountered an error and couldn't retrieve the results. Please try again.")
         return {"messages": [fallback]}
 
 
@@ -999,6 +1166,7 @@ def main():
         print("\nFeatures:")
         print("  • Search internal documents (RAG)")
         print("  • Search the web for current info")
+        print("  • Search the arXiv for papers according to your query")
         print("  • Perform calculations")
         print("  • Remember conversations")
         print("\nAnd it will automatically choose the best tool to use")

@@ -1,7 +1,20 @@
 import os, chromadb, traceback
 from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer, CrossEncoder
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.embeddings import Embeddings
+from langchain_experimental.text_splitter import SemanticChunker
+
+class LocalHuggingFaceEmbeddings(Embeddings):
+    def __init__(self, model):
+        self.model = model
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        embeddings = self.model.encode(texts)
+        return embeddings.tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        embedding = self.model.encode(text)
+        return embedding.tolist()
 
 class VectorDB:
     """
@@ -42,14 +55,24 @@ class VectorDB:
 
 
     def chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
-        """Chunk text using RecursiveCharacterTextSplitter."""
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=200,
-            length_function=len,
-            separators=["\n\n", "\n", ". ", " ", ""])
-        chunks = splitter.split_text(text)
-        return chunks
+        """Chunk text using Semantic Chunking based on embedding similarity."""
+        
+        # Wrap our existing model
+        embeddings_wrapper = LocalHuggingFaceEmbeddings(self.embedding_model)
+        
+        # Create semantic chunker
+        # 'percentile' threshold helps determine where meaning shifts occur
+        text_splitter = SemanticChunker(
+            embeddings_wrapper, 
+            breakpoint_threshold_type="percentile"
+        )
+        try:
+            chunks = text_splitter.split_text(text)
+            return chunks
+        except Exception as e:
+            print(f"Error in semantic chunking: {e}. Fallback to simple split.")
+            # Simple fallback if semantic fails (e.g. text too short)
+            return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
     
     
     def add_doc(self, documents: List) -> None:
@@ -201,3 +224,49 @@ class VectorDB:
             citation_parts.append(f"Section: {section}")
 
         return ", ".join(citation_parts)
+        
+
+    def add_arxiv_papers(self, papers: list) -> int:
+        """
+        Add arXiv papers to the vector database.
+        
+        Args:
+            papers: List of paper dictionaries with keys:
+                - title, authors, abstract, url, pdf_url, published, categories
+        
+        Returns:
+            Number of papers added
+        """
+        documents = []
+        
+        for paper in papers:
+            # Create searchable content from paper metadata
+            content = f"""Title: {paper['title']}
+
+Authors: {', '.join(paper['authors'])}
+
+Abstract: {paper['abstract']}
+
+Categories: {', '.join(paper.get('categories', []))}
+"""
+            
+            metadata = {
+                "source": paper['url'],
+                "title": paper['title'],
+                "author": ', '.join(paper['authors'][:3]),
+                "type": "arxiv_paper",
+                "page_number": 1,
+                "published_date": paper['published'],
+                "pdf_url": paper['pdf_url'],
+                "categories": ', '.join(paper.get('categories', []))
+            }
+            
+            documents.append({
+                "content": content,
+                "metadata": metadata
+            })
+        
+        if documents:
+            self.add_doc(documents)
+        
+        return len(documents)

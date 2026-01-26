@@ -770,22 +770,24 @@ def _build_provider_registry():
     global PROVIDER_REGISTRY
     PROVIDER_REGISTRY = []
     
-    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
-        PROVIDER_REGISTRY.append({
-            "name": "gemini",
-            "init": lambda: ChatGoogleGenerativeAI(
-                google_api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
-                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
-                temperature=0.0
-            )
-        })
-    
+    # Priority 1: Groq (Llama 3) - Testing Stability
     if os.getenv("GROQ_API_KEY"):
         PROVIDER_REGISTRY.append({
             "name": "groq",
             "init": lambda: ChatGroq(
                 api_key=os.getenv("GROQ_API_KEY"),
                 model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                temperature=0.0
+            )
+        })
+
+    # Priority 2: Gemini (Flash) - Fallback
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        PROVIDER_REGISTRY.append({
+            "name": "gemini",
+            "init": lambda: ChatGoogleGenerativeAI(
+                google_api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
+                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
                 temperature=0.0
             )
         })

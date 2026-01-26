@@ -85,7 +85,24 @@ def manage_context_window(messages: list) -> list:
         # Check if we already have a system message in processed
         if not any(isinstance(m, SystemMessage) for m in processed):
              processed.insert(0, sys_msgs[0])
-        
+    
+    # SANITIZATION: Ensure we don't start with a ToolMessage (orphaned)
+    # Most APIs require: User -> AI -> Tool -> AI
+    # If the first non-System message is a ToolMessage, drop it (and likely its chunks)
+    while processed and isinstance(processed[0], (ToolMessage, SystemMessage)):
+        if isinstance(processed[0], SystemMessage):
+            # Skip system message check here (we handle it above/below)
+            if len(processed) > 1 and isinstance(processed[1], ToolMessage):
+                 processed.pop(1) # Remove the tool message after system
+                 continue
+            break
+        else:
+            processed.pop(0)
+            
+    # Sanitization 2: Ensure alternation or valid start. 
+    # Usually starting with HumanMessage is safest.
+    # If we pruned everything, return empty (or just system)
+    
     return processed
 
 

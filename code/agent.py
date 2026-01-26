@@ -43,6 +43,7 @@ def manage_context_window(messages: list) -> list:
     """
     MAX_CURRENT_TOOL_CHARS = 5000
     MAX_HISTORY_TOOL_CHARS = 500
+    MAX_TEXT_MSG_CHARS = 2000 # New limit for User/AI text messages
     WINDOW_SIZE = 10
     
     processed = []
@@ -64,11 +65,17 @@ def manage_context_window(messages: list) -> list:
         if isinstance(msg, ToolMessage):
             limit = MAX_CURRENT_TOOL_CHARS if is_current_turn else MAX_HISTORY_TOOL_CHARS
             if len(msg.content) > limit:
-                # Systematic truncation
-                # We modify a COPY of the message to avoid mutating state in place if needed, 
-                # but LangChain messages are objects. We'll create a new one.
                 new_content = msg.content[:limit] + f"\n...[Truncated {len(msg.content)-limit} chars]..."
                 msg = ToolMessage(content=new_content, tool_call_id=msg.tool_call_id, name=msg.name)
+        elif isinstance(msg, (HumanMessage, AIMessage)) and hasattr(msg, 'content'):
+             # Truncate massive text responses (like bibliographies) in history
+             if len(msg.content) > MAX_TEXT_MSG_CHARS:
+                 new_content = msg.content[:MAX_TEXT_MSG_CHARS] + f"\n...[Truncated {len(msg.content)-MAX_TEXT_MSG_CHARS} chars]..."
+                 # Create copy with new content
+                 if isinstance(msg, HumanMessage):
+                     msg = HumanMessage(content=new_content)
+                 else:
+                     msg = AIMessage(content=new_content)
         
         processed.insert(0, msg)
         
@@ -663,7 +670,7 @@ def arxiv_search(query: str, max_results: int = 5, save_to_db: bool = False) -> 
             from code.rag_init import get_rag
             rag = get_rag()
             docs_added = rag.db.add_arxiv_papers(papers_data)
-            output += f"\n✅ {docs_added} papers saved to local knowledge base.\n"
+            output += f"\n {docs_added} papers saved to local knowledge base.\n"
         
         return output
         
@@ -736,9 +743,7 @@ def tools_node(state: AgentState):
     return {"messages": tool_messages}
 
 
-# Defining the agent nodes
 
-# ============ MODULAR PROVIDER SYSTEM ============
 # Provider registry - order determines priority
 PROVIDER_REGISTRY = []
 _current_provider_index = 0
@@ -776,7 +781,7 @@ def _build_provider_registry():
             "Please set GROQ_API_KEY or GEMINI_API_KEY in your .env file"
         )
     
-    print(f"📋 Provider Registry: {[p['name'] for p in PROVIDER_REGISTRY]}")
+    print(f" Provider Registry: {[p['name'] for p in PROVIDER_REGISTRY]}")
 
 def _get_current_provider():
     """Get the current provider's LLM instance"""
@@ -790,7 +795,7 @@ def _switch_to_next_provider():
     global _current_provider_index
     _current_provider_index = (_current_provider_index + 1) % len(PROVIDER_REGISTRY)
     provider = PROVIDER_REGISTRY[_current_provider_index]
-    print(f"⚡ Switching to: {provider['name']}")
+    print(f" Switching to: {provider['name']}")
     return provider
 
 def invoke_with_fallback(messages, tools=None):
@@ -820,7 +825,7 @@ def invoke_with_fallback(messages, tools=None):
             
             # Check for rate limit OR tool use errors (Gemini specific)
             if any(err in error_str for err in ["429", "resourceexhausted", "quota", "rate", "tool_use_failed", "400"]):
-                print(f"⚠️ {provider['name']} error: {str(e)[:100]}...")
+                print(f" {provider['name']} error: {str(e)[:100]}...")
                 _switch_to_next_provider()
                 continue
             

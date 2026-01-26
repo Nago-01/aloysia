@@ -283,22 +283,33 @@ def process_query(query: str):
             return "Failed to initialize agent."
 
     try:
-        from langchain_core.messages import HumanMessage
+        from langchain_core.messages import HumanMessage, AIMessage
 
         # Add user message to conversation
         st.session_state.messages.append({
             "role": "user",
             "content": query
         })
+        
+        # Build history from session state
+        history = []
+        for msg in st.session_state.messages[:-1]: # Skip the one we just added (will be added as current input)
+            if msg["role"] == "user":
+                history.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                history.append(AIMessage(content=msg["content"]))
+        
+        # Current message
+        history.append(HumanMessage(content=query))
 
         initial_state = {
-            "messages": [HumanMessage(content=query)],
+            "messages": history,
             "quality_passed": True,
             "loop_count": 0,
             "original_query": query
         }
-
-        print("Invoking agent...")
+        
+        print(f"Invoking agent with {len(history)} messages...")
 
         # Invoke agent
         result = st.session_state.agent.invoke(initial_state)

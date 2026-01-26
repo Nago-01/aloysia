@@ -34,26 +34,52 @@ class AgentState(TypedDict):
     original_query: str
 
 
-def trim_messages(messages: list, max_messages: int = 10) -> list:
-    """Trim conversation history to prevent token limit issues"""
-
-    if len(messages) <= max_messages:
-        return messages
+def manage_context_window(messages: list) -> list:
+    """
+    Middleware to strictly enforce token/context limits.
+    1. Truncates all ToolMessages to prevent bloat.
+    2. Keeps only last 10 messages (sliding window).
+    3. Preserves System Prompt.
+    """
+    MAX_CURRENT_TOOL_CHARS = 5000
+    MAX_HISTORY_TOOL_CHARS = 500
+    WINDOW_SIZE = 10
     
-    system_msgs = [msg for msg in messages if isinstance(msg, SystemMessage)]
-    human_msgs = [msg for msg in messages if isinstance(msg, HumanMessage)]
-    original_query = human_msgs[0] if human_msgs else None
-    recent_messages = messages[-(max_messages - 2):] # system + user query
-
-
-    trimmed = []
-    if system_msgs:
-        trimmed.append(system_msgs[0])
-    if original_query and original_query not in recent_messages:
-        trimmed.append(original_query)
-    trimmed.extend(recent_messages)
-
-    return trimmed
+    processed = []
+    
+    # Check if messages is empty
+    if not messages:
+        return []
+    
+    # Helper to check if msg is from current turn (simplified logic)
+    # We assume the last message in the list is the most recent
+    
+    # Slice to window size first
+    recent_messages = messages[-WINDOW_SIZE:]
+    
+    for i, msg in enumerate(reversed(recent_messages)):
+        # i=0 is the last message (most recent)
+        is_current_turn = (i < 2) # Allow last 2 messages to be "current" (tool output + tool call)
+        
+        if isinstance(msg, ToolMessage):
+            limit = MAX_CURRENT_TOOL_CHARS if is_current_turn else MAX_HISTORY_TOOL_CHARS
+            if len(msg.content) > limit:
+                # Systematic truncation
+                # We modify a COPY of the message to avoid mutating state in place if needed, 
+                # but LangChain messages are objects. We'll create a new one.
+                new_content = msg.content[:limit] + f"\n...[Truncated {len(msg.content)-limit} chars]..."
+                msg = ToolMessage(content=new_content, tool_call_id=msg.tool_call_id, name=msg.name)
+        
+        processed.insert(0, msg)
+        
+    # Always keep System Message if it exists in the original list
+    sys_msgs = [m for m in messages if isinstance(m, SystemMessage)]
+    if sys_msgs:
+        # Check if we already have a system message in processed
+        if not any(isinstance(m, SystemMessage) for m in processed):
+             processed.insert(0, sys_msgs[0])
+        
+    return processed
 
 
 # Defining tools  
@@ -829,7 +855,7 @@ def llm_node(state: AgentState):
             "loop_count": loop_count
         }
     
-    messages = trim_messages(messages, max_messages=10)
+    messages = manage_context_window(messages)
     
     # System message 
     if not any(isinstance(msg, SystemMessage) for msg in messages):
@@ -1020,7 +1046,7 @@ def synthesize_final_answer(state: AgentState):
     """
     messages = state["messages"]
 
-    messages = trim_messages(messages, max_messages=10)
+    messages = manage_context_window(messages)
 
     synthesis_prompt = SystemMessage(content="""
 Synthesize a final answer based on the available information.

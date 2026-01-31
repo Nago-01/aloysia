@@ -1,0 +1,46 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# editor files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+*.env
+
+# Build and packaging
+*.egg-info/
+build/
+dist/
+
+# Data folders 
+outputs/
+data/
+chroma_db/
+chroma_store/
+
+# Logs
+*.log
+.ipynb_checkpoints/
+*.db
+*.sqlite3
+
+# Jupyter Notebook
+.ipynb_checkpoints/

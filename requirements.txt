@@ -1,0 +1,24 @@
+# Core dependencies
+langchain-core>=0.2.0
+langchain-text-splitters>=0.2.0
+langchain-groq>=0.1.0
+langchain-google-genai>=0.1.0
+langgraph
+tavily-python
+langchain_experimental
+
+# Vector database & embeddings
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+
+# Document parsing
+PyPDF2>=3.0.0
+python-docx>=1.1.0
+
+# Utilities
+python-dotenv>=1.0.1
+pathlib
+typing-extensions>=4.9.0
+
+# arXiv integration
+arxiv>=2.1.0

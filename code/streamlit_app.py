@@ -223,6 +223,8 @@ if 'stats' not in st.session_state:
         'pages': 0,
         'queries': 0
     }
+if 'selected_model' not in st.session_state:
+    st.session_state.selected_model = "Groq"
 
 
 def initialize_agent():
@@ -306,7 +308,8 @@ def process_query(query: str):
             "messages": history,
             "quality_passed": True,
             "loop_count": 0,
-            "original_query": query
+            "original_query": query,
+            "selected_model": st.session_state.get("selected_model", "Groq").lower()
         }
         
         print(f"Invoking agent with {len(history)} messages...")
@@ -411,16 +414,17 @@ with st.sidebar:
             from code.rag_init import get_rag
             rag = get_rag()
             
-            all_results = rag.db.collection.get()
+            # Fetch all metadata from Supabase
+            all_metadatas = rag.db.list_all_metadata()
             unique_sources = set()
 
-            for metadata in all_results.get("metadatas", [])[:10]:
+            for metadata in all_metadatas:
                 source = metadata.get("source")
                 if source:
                     unique_sources.add(source)
             if unique_sources:
                 for source in sorted(unique_sources):
-                    st.text(f"{source}")
+                    st.text(f"📄 {source}")
             else:
                 st.info("No documents loaded yet")
         except Exception as e:
@@ -460,9 +464,9 @@ with st.sidebar:
     st.divider()
 
     # Settings
-    with st.expander("Settings"):
-        st.selectbox("LLM Provider", ["Gemini", "Groq"])
-        st.slider("Search Results", 1, 10, 15)
+    with st.expander("Settings", expanded=True):
+        st.session_state.selected_model = st.selectbox("LLM Provider", ["Groq", "Gemini"], index=0 if st.session_state.get("selected_model", "Groq") == "Groq" else 1)
+        st.slider("Search Results", 1, 10, 5)
         st.checkbox("Enable Re-ranking", value=True)
         st.checkbox("Enable Web Search", value=True, help="Allow agent to search the web when needed")
 

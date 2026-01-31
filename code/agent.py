@@ -1,4 +1,4 @@
-import re, os, traceback, warnings
+import re, os, traceback, warnings, time
 from typing import Annotated, Literal, List, Dict
 from typing_extensions import TypedDict
 from dotenv import load_dotenv
@@ -32,6 +32,7 @@ class AgentState(TypedDict):
     quality_passed: bool
     loop_count: int
     original_query: str
+    selected_model: str # 'groq' or 'gemini'
 
 
 def manage_context_window(messages: list) -> list:
@@ -43,7 +44,7 @@ def manage_context_window(messages: list) -> list:
     """
     MAX_CURRENT_TOOL_CHARS = 5000
     MAX_HISTORY_TOOL_CHARS = 500
-    MAX_TEXT_MSG_CHARS = 2000 # New limit for User/AI text messages
+    MAX_TEXT_MSG_CHARS = 2000 
     WINDOW_SIZE = 10
     
     processed = []
@@ -99,11 +100,75 @@ def manage_context_window(messages: list) -> list:
         else:
             processed.pop(0)
             
-    # Sanitization 2: Ensure alternation or valid start. 
-    # Usually starting with HumanMessage is safest.
-    # If we pruned everything, return empty (or just system)
+    # FINAL SANITIZATION: Strict Role Alternation (LangGraph/Groq compatible)
+    # Sequence must be: [System] -> Human -> AI -> Tool -> AI -> Human ...
+    final_sanitized = []
     
-    return processed
+    # Track the last non-system role to enforce alternation
+    # Roles: 'human', 'ai', 'tool', 'system'
+    last_role = None
+    
+    for msg in processed:
+        # 1. Identify Role
+        if isinstance(msg, SystemMessage):
+            role = "system"
+        elif isinstance(msg, HumanMessage):
+            role = "human"
+        elif isinstance(msg, ToolMessage):
+            role = "tool"
+        elif isinstance(msg, AIMessage):
+            role = "ai"
+        else:
+            continue
+            
+        # 2. Sequence Logic
+        if role == "system":
+            if not final_sanitized:
+                final_sanitized.append(msg)
+            continue # Only one system message at the very top
+            
+        if not final_sanitized:
+            # If no history, we must start with a human message
+            if role == "human":
+                final_sanitized.append(msg)
+                last_role = "human"
+            continue
+            
+        # 3. Handle Alternation Violations
+        if role == last_role:
+            if role == "human":
+                # Consecutive Humans: Merge them or keep latest
+                final_sanitized.pop()
+            elif role == "ai":
+                # Consecutive AI: Keep latest (likely a newer plan or tool call)
+                final_sanitized.pop()
+            elif role == "tool":
+                # Consecutive Tools: This is common (multiple tools called in one turn)
+                # We ALLOW consecutive ToolMessages IF they have different IDs
+                pass
+            
+        # 4. Mandatory Precedence: ToolMessage MUST follow an AIMessage with tool_calls
+        if role == "tool":
+            prev_msg = final_sanitized[-1]
+            if not (isinstance(prev_msg, AIMessage) and prev_msg.tool_calls):
+                # Orphaned tool message! This triggers 400 error. 
+                # We must drop it if we don't have the call.
+                continue
+        
+        final_sanitized.append(msg)
+        last_role = role
+    
+    # FINAL STRUCTURAL LOGGING
+    seq = [m.__class__.__name__ for m in final_sanitized]
+    print(f"--- Sanitized Sequence: {' -> '.join(seq)} ---")
+    
+    return final_sanitized
+    
+    # FINAL STRUCTURAL LOGGING: Help debug 400 Errors
+    seq = [m.__class__.__name__ for m in final_sanitized]
+    print(f"--- Sanitized Sequence: {' -> '.join(seq)} ---")
+    
+    return final_sanitized
 
 
 # Defining tools  
@@ -183,10 +248,13 @@ def rag_search(query: str) -> str:
         results["citations"][:5], 
         results["distances"][:5]
     ), 1):
+        # SANITIZATION: Remove non-printable characters to prevent API errors
+        clean_doc = "".join(char for char in doc if char.isprintable() or char in ['\n', '\t'])
+        
         formatted_results.append(
             f"**Result {i}** (Relevance: {distance:.3f})\n"
             f"{citation}\n\n"
-            f"{doc}\n"
+            f"{clean_doc}\n"
             f"\n"
         )
     
@@ -285,11 +353,12 @@ def generate_bibliography() -> str:
     rag = get_rag()
 
     try:
-        all_results = rag.db.collection.get()
+        # Fetch all metadata from Supabase
+        all_metadatas = rag.db.list_all_metadata()
         seen_sources = set()
         bibliography = []
 
-        for metadata in all_results.get("metadatas", []):
+        for metadata in all_metadatas:
             source = metadata.get("source")
             if source and source not in seen_sources:
                 seen_sources.add(source)
@@ -442,11 +511,12 @@ def export_bibliography(format: str = "word") -> str:
     rag = get_rag()
 
     try:
-        all_results = rag.db.collection.get()
+        # Fetch all metadata from Supabase
+        all_metadatas = rag.db.list_all_metadata()
         seen_sources = set()
         bibliography = []
 
-        for metadata in all_results.get("metadatas", []):
+        for metadata in all_metadatas:
             source = metadata.get("source")
             if source and source not in seen_sources:
                 seen_sources.add(source)
@@ -662,7 +732,12 @@ def arxiv_search(query: str, max_results: int = 5, save_to_db: bool = False) -> 
         papers_data = []
         for i, paper in enumerate(results, 1):
             output += f"**{i}. {paper.title}**\n"
-            output += f"   Authors: {', '.join(a.name for a in paper.authors[:3])}"
+            # Robust author parsing: handle unexpected metadata types gracefully
+            try:
+                author_names = [getattr(a, 'name', str(a)) for a in paper.authors[:3]]
+                output += f"   Authors: {', '.join(author_names)}"
+            except:
+                output += "   Authors: Information unavailable"
             if len(paper.authors) > 3:
                 output += f" et al."
             output += "\n"
@@ -777,7 +852,8 @@ def _build_provider_registry():
             "init": lambda: ChatGroq(
                 api_key=os.getenv("GROQ_API_KEY"),
                 model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-                temperature=0.0
+                temperature=0.0,
+                max_retries=0 # Fail-fast for fallback
             )
         })
 
@@ -788,7 +864,8 @@ def _build_provider_registry():
             "init": lambda: ChatGoogleGenerativeAI(
                 google_api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
                 model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
-                temperature=0.0
+                temperature=0.0,
+                max_retries=0 # Fail-fast for fallback
             )
         })
     
@@ -817,54 +894,106 @@ def _switch_to_next_provider():
     print(f" Switching to: {provider['name']}")
     return provider
 
-def invoke_with_fallback(messages, tools=None):
+def recover_tool_calls(message: AIMessage) -> AIMessage:
+    """
+    Emergency parser that 'hunts' for JSON tool calls in the message content.
+    Essential for Llama-3 models on Groq that often bypass the native tool-calling API.
+    """
+    if message.tool_calls or not message.content:
+        return message
+    
+    import json, re
+    content = message.content.strip()
+    
+    # 1. Strategy A: Direct JSON (The whole message is a JSON object)
+    if content.startswith("{") and content.endswith("}"):
+        try:
+            data = json.loads(content)
+            if "name" in data:
+                message.tool_calls = [{
+                    "name": data["name"],
+                    "args": data.get("parameters", data.get("arguments", data.get("args", {}))),
+                    "id": f"recov_{int(time.time())}",
+                    "type": "tool_call"
+                }]
+                print(f"🔧 RECOVERED TOOL CALL (Direct): {data['name']}")
+                return message
+        except:
+            pass
+
+    # 2. Strategy B: Markdown JSON (JSON inside ```json ... ``` blocks)
+    # Using regex to find all JSON-like blocks
+    json_blocks = re.findall(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+    
+    recovered_calls = []
+    for block in json_blocks:
+        try:
+            data = json.loads(block)
+            if "name" in data:
+                recovered_calls.append({
+                    "name": data["name"],
+                    "args": data.get("parameters", data.get("arguments", data.get("args", {}))),
+                    "id": f"recov_{int(time.time())}_{len(recovered_calls)}",
+                    "type": "tool_call"
+                })
+        except:
+            continue
+            
+    if recovered_calls:
+        message.tool_calls = recovered_calls
+        print(f"🔧 RECOVERED {len(recovered_calls)} TOOL CALLS from Markdown")
+        
+    return message
+
+def invoke_with_fallback(messages, tools=None, selected_model=None):
     """
     Invoke LLM with automatic provider switching on rate limits.
-    Cycles through all available providers before giving up.
+    If selected_model is provided, use only that provider.
     """
     global _current_provider_index
     
     if not PROVIDER_REGISTRY:
         _build_provider_registry()
     
-    attempts = len(PROVIDER_REGISTRY)
-    last_error = None
+    # If a specific model is selected, find its index
+    if selected_model:
+        selected_model = selected_model.lower()
+        for idx, p in enumerate(PROVIDER_REGISTRY):
+            if p["name"].lower() == selected_model:
+                _current_provider_index = idx
+                break
     
-    for attempt in range(attempts):
-        provider = PROVIDER_REGISTRY[_current_provider_index]
-        try:
-            llm = provider["init"]()
-            if tools:
-                llm = llm.bind_tools(tools)
-            return llm.invoke(messages)
+    # Only try the current selected provider (Manual override)
+    provider = PROVIDER_REGISTRY[_current_provider_index]
+    try:
+        llm = provider["init"]()
+        if tools:
+            llm = llm.bind_tools(tools)
+        
+        response = llm.invoke(messages)
+        
+        # Use recovery logic for models that output JSON in content
+        if tools and isinstance(response, AIMessage):
+            response = recover_tool_calls(response)
             
-        except Exception as e:
-            error_str = str(e).lower()
-            last_error = e
-            
-            # Check for rate limit OR tool use errors (Gemini specific)
-            if any(err in error_str for err in ["429", "resourceexhausted", "quota", "rate", "tool_use_failed", "400"]):
-                print(f" {provider['name']} error: {str(e)[:100]}...")
-                _switch_to_next_provider()
-                continue
-            
-            # Re-raise other errors
-            raise
-    
-    # All providers failed
-    raise Exception(f"All providers exhausted. Last error: {last_error}")
+        return response
+        
+    except Exception as e:
+        # Defensive Check: Ensure provider is a dict before logging
+        p_name = provider.get("name", "Unknown") if isinstance(provider, dict) else "Index-Error"
+        print(f" {p_name} error: {str(e)}")
+        # NO AUTOMATIC FALLBACK - Let user switch manually in the UI
+        raise e
 
 def _initialize_llm():
     """Initialize the LLM based on current provider (legacy compatibility)"""
     provider = _get_current_provider()
     return provider["init"]()
-# ================================================
 
 
 def llm_node(state: AgentState):
     """The agent's brain"""
     tools = get_tools()
-    
 
     messages = state["messages"]
     loop_count = state.get("loop_count", 0)
@@ -881,60 +1010,31 @@ def llm_node(state: AgentState):
     
     messages = manage_context_window(messages)
     
-    # System message 
+    # System message - SELECTOR PERSONA (Refined for deterministic tool use)
     if not any(isinstance(msg, SystemMessage) for msg in messages):
-        system_msg = SystemMessage(content="""You are Aloysia, a helpful AI Research assistant with access to tools. Follow these rules:
+        system_msg = SystemMessage(content="""You are Aloysia, an AI Document Reviewer. 
 
-        **TOOL PRIORITY & DECISION MAKING:**
+CRITICAL INSTRUCTIONS:
+1. Always start by using 'rag_search' to check provided documents.
+2. If real-time info is needed, use 'web_search'.
+3. If academic papers are needed, use 'arxiv_search'.
+4. DO NOT explain yourself. Respond ONLY with a tool call for every user's query
+5. If you have enough info, then provide a final answer.
 
-        1. **For questions about uploaded documents**:
-            - ALWAYS use rag_search FIRST
-            - For acronyms/short terms (like "AMR"), expand the query (e.g., "AMR antimicrobial resistance")
-            - For better results, add context (e.g., "in healthcare", "treatment options")
-            - Always check if results match the intended document
-
-        2. **When to use web_search:**
-            - If 'rag_search' returns "No relevant information found"
-            - If the question is about current events or real-time information
-            - If the question is about something that clearly isn't in the uploaded documents
-            - **IMPORTANT:** Before using the web_search, tell the user: "I couldn't find the information in your documents. Would you like me to search the web instead?" and wait for confirmation.
-
-        3. **For document comparisons:**
-            - Use 'compare_documents' when explicitly asked to compare two documents
-            - If the user asks to compare more than two documents, use 'compare_documents' for the first comparison and 'compare_documents' for the second comparison
-            - If the user asks to compare document(s) with the results of a web search, use 'compare_documents' for the first comparison and 'web_search' for the second comparison
-
-        4. **For bibliography:**
-            - Use 'bibliography' when explicitly asked about sources or references
-            - If the user asks to create a bibliography for more than one document, use 'bibliography' for the first document and 'bibliography' for the second document
-
-        5. **For math or calculations:**
-            - Use 'calculator' for any mathemathical operations
-
-        6. **For academic paper search:**
-            - Use 'arxiv_search' when user asks for research papers, academic literature, or arXiv
-            - Set save_to_db=True if user wants to keep papers for future reference
-            - This searches the arXiv database directly for peer-reviewed papers
-
-        **WEB SEARCH WORKFLOW:**
-            - Step 1: Try 'rag_search' first
-            - Step 2: If no results, respond: "I couldn't find information about this in your documents. Would you like me to search the web instead?"
-            - Step 3: Only call 'web_search' if the user confirms or explicitly asks for it        
-
-        **CITATION GUARDRAILS**
-        - ALWAYS cite page numbers and sources in your answer
-        - Format: "According to [Source: amr.pdf, Page: 5], ..."
-        - When comparing, clearly state differences and similarities
-
-        **RESPONSE LENGTH:**
-        - Keep responses under 300 words unless specifically asked for more detail
-        - Be concise and direct
-        
-        Remember: You are a Research Assistant. Your primary job is to help users understand their documents. Only use web search when information truly isn't available in the documents. """)
+FORMAT REQUIREMENT:
+When using a tool, output the raw JSON tool call inside a markdown block:
+```json
+{"name": "tool_name", "args": {"arg1": "value"}}
+```""")
         messages = [system_msg] + messages
     
     try:
-        response = invoke_with_fallback(messages, tools=tools)
+        response = invoke_with_fallback(messages, tools=tools, selected_model=state.get("selected_model"))
+        
+        # LOG RAW CONTENT: See why tools are being skipped
+        if hasattr(response, 'content') and response.content:
+            print(f"--- LLM Raw Content: {response.content[:200]}... ---")
+            
         return {
             "messages": [response],
             "loop_count": loop_count + 1
@@ -1090,13 +1190,13 @@ Format: According to [Source: filename.pdf, Page: X], ...
     print("Invoking LLM for synthesis...")
 
     try:
-        response = invoke_with_fallback(messages_with_synthesis)
+        response = invoke_with_fallback(messages_with_synthesis, selected_model=state.get("selected_model"))
 
         content = response.content
         print(f"Synthesis Complete. Length: {len(content)} chars")
 
-        # Check if response is short
-        if not content or len(content.strip()) < 10:
+        # Check if response is short but NOT a question (valid questions come from QC)
+        if (not content or len(content.strip()) < 10) and "?" not in content:
             print("Synthesis produced very short response!")
             fallback = AIMessage(content="I apologize, but I couldn't generate a complete response. Please try rephrasing your question.")
             return {"messages": [fallback]}
@@ -1106,7 +1206,7 @@ Format: According to [Source: filename.pdf, Page: X], ...
             print("Response too long. Regenerating...")
             feedback = SystemMessage(content="Response too long. Provide a concise 200-word summary.")
             messages_with_feedback = messages_with_synthesis + [response, feedback]
-            response = invoke_with_fallback(messages_with_feedback)
+            response = invoke_with_fallback(messages_with_feedback, selected_model=state.get("selected_model"))
 
         return {"messages": [response]}
     
@@ -1134,11 +1234,13 @@ def should_continue(state: AgentState) -> Literal["tools", "synthesize"]:
     
     # If LLM made tool calls, execute them
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        print("\nAgent is selecting tools...")
+        print(f"\nAgent is selecting {len(last_message.tool_calls)} tools...")
         return "tools"
     
     # Otherwise move to synthesis
-    print("\nAgent is ready to synthesize answer")
+    print(f"\nAgent is skipping tools. Last msg type: {type(last_message).__name__}")
+    if hasattr(last_message, 'content') and last_message.content:
+        print(f"--- Skip Answer: {last_message.content[:100]}... ---")
     return "synthesize"
 
 

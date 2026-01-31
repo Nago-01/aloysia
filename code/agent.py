@@ -904,8 +904,7 @@ def recover_tool_calls(message: AIMessage) -> AIMessage:
     
     import json, re
     content = message.content.strip()
-    
-    # 1. Strategy A: Direct JSON (The whole message is a JSON object)
+   
     if content.startswith("{") and content.endswith("}"):
         try:
             data = json.loads(content)
@@ -921,7 +920,6 @@ def recover_tool_calls(message: AIMessage) -> AIMessage:
         except:
             pass
 
-    # 2. Strategy B: Markdown JSON (JSON inside ```json ... ``` blocks)
     # Using regex to find all JSON-like blocks
     json_blocks = re.findall(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
     

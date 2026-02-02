@@ -904,7 +904,8 @@ def recover_tool_calls(message: AIMessage) -> AIMessage:
     
     import json, re
     content = message.content.strip()
-   
+    
+    # 1. Strategy A: Direct/Pure JSON (The whole message is a JSON object)
     if content.startswith("{") and content.endswith("}"):
         try:
             data = json.loads(content)
@@ -920,6 +921,28 @@ def recover_tool_calls(message: AIMessage) -> AIMessage:
         except:
             pass
 
+    # 2. Strategy B: XML format (Groq/Llama-3 special leak)
+    # Format variations: <function=name {"arg": "val"}> </function> OR <function=name {"arg": "val"} </function>
+    # The regex must handle optional closing bracket and </function> tag
+    xml_match = re.search(r'<function=([a-zA-Z0-9_-]+)\s*(\{.*?\})\s*>?\s*(?:</function>)?', content, re.DOTALL)
+    if xml_match:
+        try:
+            tool_name = xml_match.group(1)
+            args_str = xml_match.group(2)
+            data = json.loads(args_str)
+            message.tool_calls = [{
+                "name": tool_name,
+                "args": data,
+                "id": f"recov_xml_{int(time.time())}",
+                "type": "tool_call"
+            }]
+            print(f"RECOVERED TOOL CALL (XML): {tool_name}")
+            return message
+        except Exception as parse_err:
+            print(f"XML recovery parse error: {parse_err}")
+            pass
+
+    # 3. Strategy C: Markdown JSON (JSON inside ```json ... ``` blocks)
     # Using regex to find all JSON-like blocks
     json_blocks = re.findall(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
     
@@ -977,6 +1000,20 @@ def invoke_with_fallback(messages, tools=None, selected_model=None):
         return response
         
     except Exception as e:
+        error_msg = str(e)
+        # BUG FIX: Catch Groq's 400 "tool_use_failed" and extract the failed generation
+        if "tool_use_failed" in error_msg:
+            print("Detected Groq tool-use failure. Attempting emergency recovery from error message...")
+            import re
+            # Extract content from 'failed_generation': '<content>'
+            failed_gen = re.search(r"'failed_generation':\s*'([^']*)'", error_msg)
+            if failed_gen:
+                content = failed_gen.group(1)
+                print(f"Emergency Found: {content[:100]}...")
+                # Create a "dirty" response to be fixed by recover_tool_calls
+                dirty_response = AIMessage(content=content)
+                return recover_tool_calls(dirty_response)
+        
         # Defensive Check: Ensure provider is a dict before logging
         p_name = provider.get("name", "Unknown") if isinstance(provider, dict) else "Index-Error"
         print(f" {p_name} error: {str(e)}")
@@ -1040,17 +1077,10 @@ When using a tool, output the raw JSON tool call inside a markdown block:
     except Exception as e:
         error_msg = str(e)
         print(f"LLM Error: {error_msg[:200]}")
-
-        if "tool_use_failed" in error_msg or "Failed to call a function" in error_msg:
-            print("Tool call failed. Moving to synthesis with disclaimer.")
-
-            disclaimer = AIMessage(content="""I encountered an issue accessing the document search tools. I an provide general information, but cannot site specific sources at this moment. Kindly rephrase your question or try again.""")
-
-            return {
-                "messages": [disclaimer],
-                "loop_count": loop_count + 1
-            }
-        raise
+        
+        # If we reach here, even the emergency recovery in invoke_with_fallback failed
+        # or it was a different type of error (Rate Limit, etc.)
+        raise e
 
 
 
@@ -1171,18 +1201,19 @@ def synthesize_final_answer(state: AgentState):
     messages = manage_context_window(messages)
 
     synthesis_prompt = SystemMessage(content="""
-Synthesize a final answer based on the available information.
+Synthesize a final answer based EXCLUSIVELY on the retrieved documents provided in the conversation.
 
+STRICT REQUIREMENTS:
+1. ONLY cite sources that appear in the ToolMessage results above
+2. DO NOT reference external sources (Mayo Clinic, Wikipedia, WHO, etc.) unless they appear in the retrieved documents
+3. Maximum 300 words
+4. Include citations in format: [Source: filename.pdf, Page: X]
+5. If the retrieved documents do not contain the answer, say: "The provided documents do not contain information about this topic."
+6. Be direct and factual
 
-REQUIREMENTS:
-- Maximum 300 words
-- Include citations if available (Source, Page numbers), 
-- Be direct and clear
-- Directly answer the question
-- If no information found, say so.                                     
-
-Format: According to [Source: filename.pdf, Page: X], ...
+FORBIDDEN: Citing any source not explicitly mentioned in the tool results above.
 """)
+
     
     messages_with_synthesis = messages + [synthesis_prompt]
     print("Invoking LLM for synthesis...")

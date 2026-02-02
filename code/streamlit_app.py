@@ -1,6 +1,6 @@
 """
 Streamlit Web UI for RAG Research Assistant
-Army Green Theme with Dark Mode Support
+Clean Minimalist Theme - Educational Product Design
 """
 
 import streamlit as st
@@ -8,6 +8,7 @@ from pathlib import Path
 import sys, traceback
 import os, chromadb
 import warnings
+import uuid
 from PyPDF2 import PdfReader
 from docx import Document
 
@@ -33,176 +34,297 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Army Green Theme with Dark Mode Support
+# Clean Minimalist CSS - Inspired by paperreview.ai
 st.markdown("""
 <style>
     /* Import fonts */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
             
-    /* Root variables for theming */
+    /* Root variables - Light Grey + Dark Green Theme */
     :root {
-        --primary-green: #4a5f3a;
-        --secondary-green: #6b7f5a;
-        --light-green: #8b9f7a;
-        --accent-green: #3a4f2a;
+        --primary-color: #2d5a3d;
+        --primary-hover: #1e4a2d;
+        --primary-light: #3d7a4d;
+        --text-primary: #1a2e1a;
+        --text-secondary: #4a5f4a;
+        --text-light: #f0f4f0;
+        --bg-primary: #d0d8d0;
+        --bg-secondary: #c0c8c0;
+        --bg-dark: #2d5a3d;
+        --border-color: #a5b0a5;
+        --success-color: #2d5a3d;
+        --accent-light: #b8c8b8;
     }
+
+
             
+    /* Global font */
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
     /* Main container */
     .main {
-        background-color: var(--background-color);
+        background-color: var(--bg-secondary);
     }
     
-    /* Header styling */
+    /* Header styling - Clean and minimal */
     .header-container {
-        background: linear-gradient(135deg, #4a5f3a 0%, #3a4f2a 100%);
-        padding: 2rem;
-        border-radius: 1rem;
-        margin-bottom: 2rem;
+        background: var(--bg-primary);
+        padding: 1.5rem 2rem;
+        border-radius: 0.75rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .header-logo {
+        width: 40px;
+        height: 40px;
+        background: var(--primary-color);
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         color: white;
-        text-align: center;
+        font-weight: 700;
+        font-size: 1.25rem;
     }
 
     .header-title {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0;
     }
 
     .header-subtitle {
-        font-size: 1.1rem;
-        opacity: 0.9;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin: 0;
     }
 
-    /* Stats cards */
+    .workspace-badge {
+        background: var(--accent-light);
+        color: var(--primary-color);
+        padding: 0.375rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    /* Stats cards - Minimal */
     .stats-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        grid-template-columns: repeat(3, 1fr);
         gap: 1rem;
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
     }
             
     .stat-card {
-        background: linear-gradient(135deg, #4a5f3a 0%, #6b7f5a 100%);
-        padding: 1.5rem;
+        background: var(--bg-primary);
+        padding: 1.25rem;
         border-radius: 0.75rem;
-        color: white;
+        border: 1px solid var(--border-color);
         text-align: center;
-        box-shadow: 0 4px 12px rgba(74, 95, 58, 0.2)
     }
             
     .stat-number {
-        font-size: 2rem;
+        font-size: 1.75rem;
         font-weight: 700;
-        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+        margin-bottom: 0.25rem;
     }
     
     .stat-label {
-        font-size: 0.9rem;
-        opacity: 0.9;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
     
-    /* Chat messages */
+    /* Chat messages - Clean bubbles */
     .user-message {
-        background: linear-gradient(135deg, #4a5f3a 0%, #6b7f5a 100%);
+        background: var(--primary-color);
         color: white;
         padding: 1rem 1.25rem;
         border-radius: 1rem;
         border-bottom-right-radius: 0.25rem;
-        margin: 0.5rem 0;
+        margin: 0.75rem 0;
         margin-left: 20%;
+        font-size: 0.9375rem;
+        line-height: 1.5;
     }
     
     .assistant-message {
-        background: #f5f7f5;
-        color: #2d3a2d;
+        background: var(--bg-primary);
+        color: var(--text-primary);
         padding: 1rem 1.25rem;
         border-radius: 1rem;
         border-bottom-left-radius: 0.25rem;
-        margin: 0.5rem 0;
+        margin: 0.75rem 0;
         margin-right: 20%;
-        border: 1px solid #d0d8d0;
+        border: 1px solid var(--border-color);
+        font-size: 0.9375rem;
+        line-height: 1.6;
     }
     
-    .citation {
-        font-size: 0.85rem;
-        color: rgba(255,255,255,0.8);
-        margin-top: 0.5rem;
-        padding-top: 0.5rem;
-        border-top: 1px solid rgba(255,255,255,0.2);
-    }
-    
-    /* Buttons */
+    /* Buttons - Clean primary style */
     .stButton>button {
-        background: linear-gradient(135deg, #4a5f3a 0%, #6b7f5a 100%);
+        background: var(--primary-color);
         color: white;
         border: none;
         border-radius: 0.5rem;
-        padding: 0.5rem 1.5rem;
-        font-weight: 600;
-        transition: transform 0.2s;
+        padding: 0.5rem 1.25rem;
+        font-weight: 500;
+        font-size: 0.875rem;
+        transition: all 0.2s;
     }
     
     .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(74, 95, 58, 0.3);
+        background: var(--primary-hover);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
     }
     
-    /* Sidebar */
+    /* Sidebar - Clean */
     [data-testid="stSidebar"] {
-        background-color: #000000;
+        background-color: var(--bg-primary);
+        border-right: 1px solid var(--border-color);
     }
     
     [data-testid="stSidebar"] .stMarkdown {
-        color: #2d3a2d;
+        color: var(--text-primary);
     }
+
+    /* Sidebar - ALL text elements dark forest green */
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] .stCheckbox label,
+    [data-testid="stSidebar"] .stRadio label,
+    [data-testid="stSidebar"] .stSelectbox label,
+    [data-testid="stSidebar"] .stTextInput label,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+        color: var(--text-primary) !important;
+    }
+
+    /* Sidebar checkbox and radio text */
+    [data-testid="stSidebar"] .stCheckbox > label > div[data-testid="stMarkdownContainer"] > p,
+    [data-testid="stSidebar"] .stCheckbox span {
+        color: var(--text-primary) !important;
+    }
+
+    /* Sidebar headers */
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary) !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.75rem;
+    }
+
     
-    /* File uploader */
+    /* File uploader - Clean border */
     [data-testid="stFileUploader"] {
-        border: 2px dashed #4a5f3a;
+        border: 2px dashed var(--border-color);
         border-radius: 0.75rem;
         padding: 1rem;
-        background: white;
+        background: var(--bg-secondary);
     }
     
-    /* Tool cards */
+    [data-testid="stFileUploader"]:hover {
+        border-color: var(--primary-color);
+    }
+    
+    /* Tool cards - Subtle */
     .tool-card {
-        background: white;
-        border: 2px solid #d0d8d0;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
         border-radius: 0.75rem;
-        padding: 1.5rem;
+        padding: 1.25rem;
         margin-bottom: 1rem;
-        transition: all 0.3s;
+        transition: all 0.2s;
     }
     
     .tool-card:hover {
-        border-color: #4a5f3a;
-        transform: translateY(-4px);
-        box-shadow: 0 8px 20px rgba(74, 95, 58, 0.1);
+        border-color: var(--primary-color);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     }
     
     .tool-title {
-        color: #4a5f3a;
-        font-size: 1.1rem;
+        color: var(--text-primary);
+        font-size: 1rem;
         font-weight: 600;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.375rem;
     }
     
     .tool-description {
-        color: #5a6b5a;
-        font-size: 0.9rem;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
     }
-    
-    /* Badge */
-    .badge {
-        display: inline-block;
-        background: #4a5f3a;
-        color: white;
-        padding: 0.25rem 0.75rem;
-        border-radius: 1rem;
+
+    /* Workspace selector in sidebar */
+    .workspace-selector {
+        background: var(--accent-light);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .workspace-label {
         font-size: 0.75rem;
-        font-weight: 600;
-        margin-left: 0.5rem;
+        color: var(--text-secondary);
+        margin-bottom: 0.25rem;
     }
+
+    .workspace-name {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+
+    /* Tabs - Clean underline style */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+
+    .stTabs [data-baseweb="tab"]:hover {
+        color: var(--text-primary);
+    }
+
+    .stTabs [aria-selected="true"] {
+        color: var(--primary-color);
+    }
+
+    /* Footer */
+    .footer {
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        padding: 1rem 0;
+    }
+
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -225,6 +347,72 @@ if 'stats' not in st.session_state:
     }
 if 'selected_model' not in st.session_state:
     st.session_state.selected_model = "Groq"
+
+# Multi-user: Email-based identification
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = ""
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = "default_user"
+if 'workspace_name' not in st.session_state:
+    st.session_state.workspace_name = "My Research"
+
+
+# ============================================================================
+# LOGIN SCREEN
+# ============================================================================
+def show_login_screen():
+    """Display the login screen for email-based identification"""
+    
+    # Center the login form
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("""
+        <div style="text-align: center; padding: 2rem 0;">
+            <div style="font-size: 3rem; font-weight: 700; color: var(--primary-color); margin-bottom: 0.5rem;">Aloysia</div>
+            <div style="font-size: 1rem; color: var(--text-secondary); margin-bottom: 2rem;">Agentic Research Assistant</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("### Sign in to your workspace")
+        st.caption("Enter your email to access your personal research workspace.")
+        
+        with st.form("login_form"):
+            email = st.text_input(
+                "Email Address",
+                placeholder="you@example.com",
+                help="Your email will be used to identify your workspace"
+            )
+            
+            workspace = st.text_input(
+                "Workspace Name (optional)",
+                placeholder="My Research",
+                help="Give your workspace a name"
+            )
+            
+            submit = st.form_submit_button("Sign In", use_container_width=True)
+            
+            if submit:
+                if email and "@" in email:
+                    st.session_state.logged_in = True
+                    st.session_state.user_email = email
+                    st.session_state.user_id = email  # Use email as user_id
+                    st.session_state.workspace_name = workspace if workspace else "My Research"
+                    st.rerun()
+                else:
+                    st.error("Please enter a valid email address")
+        
+        st.divider()
+        st.caption("Your documents and conversations are stored privately in your workspace.")
+
+
+# Check if user is logged in - if not, show login screen
+if not st.session_state.logged_in:
+    show_login_screen()
+    st.stop()  # Stop execution here until logged in
+
 
 
 def initialize_agent():
@@ -309,7 +497,8 @@ def process_query(query: str):
             "quality_passed": True,
             "loop_count": 0,
             "original_query": query,
-            "selected_model": st.session_state.get("selected_model", "Groq").lower()
+            "selected_model": st.session_state.get("selected_model", "Groq").lower(),
+            "user_id": st.session_state.get("user_id", "default_user")  # Pass user_id to agent
         }
         
         print(f"Invoking agent with {len(history)} messages...")
@@ -351,33 +540,59 @@ def process_query(query: str):
             return f"An error occurred: {str(e)}\n\nPlease try again or rephrase your question."
     
 
-# Header
+# Header - Clean minimal design
 st.markdown("""
 <div class="header-container">
-    <div class="header-title">Aloysia</div>
-    <div class="header-subtitle">
-        Your AI-powered document analyst and research companion
+    <div class="header-left">
+        <div class="header-logo">A</div>
+        <div>
+            <div class="header-title">Aloysia</div>
+            <div class="header-subtitle">Your Agentic Research Assistant</div>
+        </div>
     </div>
+    <div class="workspace-badge">Research Workspace</div>
 </div>
 """, unsafe_allow_html=True)
 
 
 # Sidebar
 with st.sidebar:
-    st.title("Document Management")
+    # User info and workspace
+    st.markdown("### Account")
+    st.caption(f"Signed in as: **{st.session_state.user_email}**")
+    
+    workspace_name = st.text_input(
+        "Workspace",
+        value=st.session_state.workspace_name,
+        help="Name your research workspace",
+        label_visibility="collapsed"
+    )
+    if workspace_name != st.session_state.workspace_name:
+        st.session_state.workspace_name = workspace_name
+    
+    if st.button("Sign Out", use_container_width=True, type="secondary"):
+        st.session_state.logged_in = False
+        st.session_state.user_email = ""
+        st.session_state.user_id = "default_user"
+        st.session_state.messages = []
+        st.rerun()
+    
+    st.divider()
+
 
     # Document upload
-    st.subheader("Upload Documents")
+    st.markdown("### Documents")
     uploaded_files = st.file_uploader(
-        "Upload PDF, DOCX, TXT, or MD files",
+        "Upload research papers",
         type=["pdf", "docx", "txt", "md"],
         accept_multiple_files=True,
         key="main_uploader",
-        help="Upload research papers, documents, or text files"
+        help="PDF, DOCX, TXT, or Markdown files",
+        label_visibility="collapsed"
     )
 
-    if uploaded_files and st.button("Process Uploaded Files"):
-        with st.spinner("Processing uploaded files..."):
+    if uploaded_files and st.button("Process Files", use_container_width=True):
+        with st.spinner("Processing..."):
             # Save uploaded files temporarily
             upload_dir = Path("./uploaded_docs")
             upload_dir.mkdir(exist_ok=True)
@@ -394,21 +609,19 @@ with st.sidebar:
             docs = load_document_from_folder(upload_dir)
 
             if docs:
-                st.success(f"Loaded {len(docs)} document chunks")
+                st.success(f"Loaded {len(docs)} chunks")
 
                 
                 try:
                     if initialize_agent():
                         from code.rag_init import initialize_rag
                         rag = initialize_rag()
-                        st.success("Documents added to knowledge base")
+                        st.success("Added to knowledge base")
                 except Exception as e:
-                    st.error(f"Error initializing agent: {str(e)}")
+                    st.error(f"Error: {str(e)}")
                     traceback.print_exc()
 
     # Show loaded documents
-    st.subheader("Loaded Documents")
-
     if st.session_state.get("rag_initialized", False):
         try:
             from code.rag_init import get_rag
@@ -423,59 +636,50 @@ with st.sidebar:
                 if source:
                     unique_sources.add(source)
             if unique_sources:
-                for source in sorted(unique_sources):
-                    st.text(f"📄 {source}")
-            else:
-                st.info("No documents loaded yet")
+                with st.expander(f"{len(unique_sources)} Documents", expanded=False):
+                    for source in sorted(unique_sources):
+                        st.caption(f"• {source}")
         except Exception as e:
-            st.info("Upload files to get started")
-    else: 
-        st.info("No documents loaded. Upload files to get started.")
+            pass
 
     st.divider()
 
-    # Setting up features
-    st.title("Features")
+    # Settings - Compact
+    st.markdown("### Settings")
+    st.session_state.selected_model = st.selectbox(
+        "Model", 
+        ["Groq", "Gemini"], 
+        index=0 if st.session_state.get("selected_model", "Groq") == "Groq" else 1,
+        label_visibility="collapsed"
+    )
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.checkbox("Re-ranking", value=True, key="rerank")
+    with col2:
+        st.checkbox("Web Search", value=True, key="websearch")
 
-    if st.button("Compare Documents", use_container_width=True):
+    st.divider()
+
+    # Quick actions
+    st.markdown("### Quick Actions")
+    if st.button("Compare Docs", use_container_width=True):
         st.session_state.page = "compare"
-    
-    if st.button("Generate Bibliography", use_container_width=True, key="sidebar_bibliography_btn"):
+    if st.button("Bibliography", use_container_width=True):
         st.session_state.page = "bibliography"
-    
     if st.button("Literature Review", use_container_width=True):
         st.session_state.page = "review"
     
-    if st.button("Export Options", use_container_width=True):
-        st.session_state.page = "export"
-    
-    st.divider()
-
-
-    #Integrations
-    st.title("Integrations")
-    st.markdown("""
-    **Coming Soon:**
-    - WhatsApp Bot
-    - Telegram Bot
-    - API Access
-    """)
-
-    st.divider()
-
-    # Settings
-    with st.expander("Settings", expanded=True):
-        st.session_state.selected_model = st.selectbox("LLM Provider", ["Groq", "Gemini"], index=0 if st.session_state.get("selected_model", "Groq") == "Groq" else 1)
-        st.slider("Search Results", 1, 10, 5)
-        st.checkbox("Enable Re-ranking", value=True)
-        st.checkbox("Enable Web Search", value=True, help="Allow agent to search the web when needed")
+    if st.button("Clear Chat", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
 
 
 
-# Main content area
-stats_col1, stats_col2, stats_col3 = st.columns(3)
+# Main content area - Stats
+col1, col2, col3 = st.columns(3)
 
-with stats_col1:
+with col1:
     st.markdown(f"""
     <div class="stat-card">
         <div class="stat-number">{st.session_state.stats['documents']}</div>
@@ -483,7 +687,7 @@ with stats_col1:
     </div>
     """, unsafe_allow_html=True)
 
-with stats_col2:
+with col2:
     st.markdown(f"""
     <div class="stat-card">
         <div class="stat-number">{st.session_state.stats['pages']}</div>
@@ -491,7 +695,7 @@ with stats_col2:
     </div>
     """, unsafe_allow_html=True)
 
-with stats_col3:
+with col3:
     st.markdown(f"""
     <div class="stat-card">
         <div class="stat-number">{st.session_state.stats['queries']}</div>
@@ -500,40 +704,44 @@ with stats_col3:
     """, unsafe_allow_html=True)
 
 # Tabs for different functionalities
-tab1, tab2, tab3, tab4 = st.tabs(["Chat", "Tools", "Bibliography", "Literature Review"])
+tab1, tab2, tab3 = st.tabs(["Chat", "Tools", "Library"])
 
 with tab1:
-    st.subheader("Chat with your Documents")
-
     # Chat container
     chat_container = st.container()
 
     with chat_container:
         # Display chat history
-        for message in st.session_state.messages:
-            if message["role"] == "user":
-                st.markdown(f"""
-                <div class="user-message">
-                    <strong>You:</strong><br>
-                    {message["content"]}
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class="assistant-message">
-                    <strong>Aloysia:</strong><br>
-                    {message["content"]}
-                </div>
-                """, unsafe_allow_html=True)
+        if not st.session_state.messages:
+            st.markdown("""
+            <div style="text-align: center; padding: 3rem; color: #6b7280;">
+                <div style="font-size: 1.125rem; font-weight: 500; margin-bottom: 0.5rem;">Welcome to Aloysia</div>
+                <div style="font-size: 0.875rem;">Upload papers and start asking questions about your research.</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            for message in st.session_state.messages:
+                if message["role"] == "user":
+                    st.markdown(f"""
+                    <div class="user-message">
+                        {message["content"]}
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class="assistant-message">
+                        {message["content"]}
+                    </div>
+                    """, unsafe_allow_html=True)
 
     # Chat input
     with st.form(key="chat-form", clear_on_submit=True):
-        col1, col2 = st.columns([5, 1])
+        col1, col2 = st.columns([6, 1])
 
         with col1:
             user_input = st.text_input(
                 "Ask anything about your documents...",
-                placeholder="E.g., What is Aritificial Intelligence?",
+                placeholder="e.g., What is the main finding of this paper?",
                 label_visibility="collapsed"
             )
             
@@ -541,12 +749,12 @@ with tab1:
             submit_button = st.form_submit_button("Send", use_container_width=True)
 
         if submit_button and user_input:
-            with st.spinner("Processing..."):
+            with st.spinner("Thinking..."):
                 response = process_query(user_input)
             st.rerun()
 
 with tab2:
-    st.subheader("Research Tools")
+    st.markdown("#### Research Tools")
 
     col1, col2 = st.columns(2)
 
@@ -554,34 +762,32 @@ with tab2:
         st.markdown("""
         <div class="tool-card">
             <div class="tool-title">Compare Documents</div>
-            <div class="tool-description">Compare two documents side-by-side on specific topics</div>
+            <div class="tool-description">Analyze similarities and differences between papers</div>
         </div>
         """, unsafe_allow_html=True)
 
-        with st.expander("Compare two documents"):
-            doc1 = st.text_input("Document 1(e.g., xyz.pdf)")
-            doc2 = st.text_input("Document 2(e.g., med.pdf)")
-            topic = st.text_input("Topic to compare (e.g., treatment)")
+        with st.expander("Compare"):
+            doc1 = st.text_input("Document 1", placeholder="paper1.pdf")
+            doc2 = st.text_input("Document 2", placeholder="paper2.pdf")
+            topic = st.text_input("Topic", placeholder="methodology")
 
             if st.button("Compare", key="compare_btn"):
                 if doc1 and doc2 and topic:
                     query = f"Compare {doc1} and {doc2} on topic: {topic}"
-                    with st.spinner("Comparing documents..."):
+                    with st.spinner("Comparing..."):
                         response = process_query(query)
                         st.markdown(response)
 
     with col2:
         st.markdown("""
         <div class="tool-card">
-            <div class="tool-title">Advanced Search</div>
-            <div class="tool-description">Search with filters and advanced options</div>
+            <div class="tool-title">Semantic Search</div>
+            <div class="tool-description">Find relevant passages across all documents</div>
         </div>
         """, unsafe_allow_html=True)
 
-        with st.expander("Advanced Search Options"):
-            search_query = st.text_input("Search Query")
-            num_results = st.slider("Number of Results", 1, 10, 5)
-            use_reranking = st.checkbox("Enable re-ranking", value=True)
+        with st.expander("Search"):
+            search_query = st.text_input("Search Query", placeholder="treatment outcomes")
 
             if st.button("Search", key="search_btn"):
                 if search_query:
@@ -590,64 +796,37 @@ with tab2:
                         st.markdown(response)
 
 with tab3:
-    st.subheader("Generate Bibliography")
+    st.markdown("#### Document Library")
     
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown("Generate and export bibliographies in multiple formats")
+        topic = st.text_input("Research Topic", placeholder="e.g., Antimicrobial Resistance")
     
     with col2:
-        export_format = st.selectbox("Format", ["Word", "LaTeX", "Markdown"])
+        export_format = st.selectbox("Format", ["Markdown", "LaTeX", "Word"])
     
-    if st.button("Generate Bibliography", use_container_width=True, key="tab_bibliography_btn"):
-        with st.spinner("Generating bibliography..."):
-            response = process_query("Generate bibliography")
-            st.markdown(response)
-    
-    if st.button(f"Export to {export_format}", use_container_width=True):
-        with st.spinner(f"Exporting to {export_format}..."):
-            response = process_query(f"Export bibliography to {export_format}")
-            st.success(response)
-
-with tab4:
-    st.subheader("Generate Literature Review")
-
-    col1, col2 = st.columns([2, 1])
-    
-    topic = st.text_input("Research topic", placeholder="E.g., Antimicrobial Resistance")
-    # max_sources = st.slider("Maximum sources", 1, 20, 10)
+    col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("Generate and export literature reviews in multiple formats")
-   
-    with col2:
-        export_format = st.selectbox("Export format", ["Word", "LaTeX", "Markdown"], key="review_format")
-        
-    if st.button(f"Export Review as {export_format}", use_container_width=True):
-        if topic:
-            with st.spinner(f"Exporting to {export_format}..."):
-                response = process_query(f"Export literature review on {topic} as {export_format}")
-                st.success(response)
-        else:
-            st.warning("Please enter a research topic")
-
-    
-    if st.button("Generate Review", use_container_width=True):
-        if topic:
-            with st.spinner("Generating literature review..."):
-                response = process_query(f"Generate literature review on: {topic}")
+        if st.button("Generate Bibliography", use_container_width=True):
+            with st.spinner("Generating..."):
+                response = process_query("Generate bibliography for all documents")
                 st.markdown(response)
-        else:
-            st.warning("Please enter a research topic")
+    
+    with col2:
+        if st.button("Generate Literature Review", use_container_width=True):
+            if topic:
+                with st.spinner("Generating..."):
+                    response = process_query(f"Generate literature review on: {topic}")
+                    st.markdown(response)
+            else:
+                st.warning("Enter a topic first")
 
 
 # Footer
-st.divider()
 st.markdown("""
-<div style="text-align: center; color: #5a6b5a; font-size: 0.9rem;">
-    <p>Aloysia | Built by Nago</p>
+<div class="footer">
+    Aloysia • Built by Nago
 </div>
 """, unsafe_allow_html=True)
-
-                        

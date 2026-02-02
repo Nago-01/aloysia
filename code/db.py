@@ -41,7 +41,12 @@ class VectorDB:
 
         # Initialize cross-encoder for re-ranking (Keep local for quality)
         # Note: This is 100x smaller than the embedding model
-        self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        try:
+            print("Initializing local Cross-Encoder...")
+            self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        except Exception as e:
+            print(f"Warning: Cross-Encoder failed to initialize ({e}). Falling back to standard cosine similarity.")
+            self.reranker = None
         
         # Initialize Vector Store
         self.vector_store = SupabaseVectorStore(
@@ -50,8 +55,7 @@ class VectorDB:
             table_name=self.table_name,
             query_name="match_documents" # Expected RPC name in Supabase
         )
-
-        print(f"Cloud Vector DB initialized (Supabase: {self.supabase_url})")
+        print(f"Supabase Initialized: {self.supabase_url}")
 
 
 
@@ -122,12 +126,12 @@ class VectorDB:
                     break
                 except Exception as emb_e:
                     if "429" in str(emb_e) and attempt < 2:
-                        print(f"⚠️ Embedding Rate Limit hit. Retrying in {attempt + 1}s...")
+                        print(f"Embedding Rate Limit hit. Retrying in {attempt + 1}s...")
                         import time
                         time.sleep(attempt + 1)
                         continue
                     else:
-                        print(f"⚠️ Embedding API Error: {emb_e}. Skipping RAG search.")
+                        print(f"Embedding API Error: {emb_e}. Skipping RAG search.")
                         return {"documents": [], "metadatas": [], "distances": [], "ids": [], "citations": []}
 
             # 2. Call the 'match_documents' RPC function directly
@@ -154,8 +158,47 @@ class VectorDB:
             metadatas = [row["metadata"] for row in response.data]
             scores = [row["similarity"] for row in response.data]
 
+            # FILTER: Skip bibliography/references chunks (low-value for Q&A)
+            # Patterns that indicate reference/bibliography sections
+            REFERENCE_PATTERNS = [
+                r'^\d+\.\s+[A-Z][a-z]+\s+[A-Z]{1,2},',  # "1. Smith J, ..."
+                r'^\[\d+\]',  # "[1] Reference..."
+                r'^References\s*$',
+                r'^Bibliography\s*$',
+                r'et\s+al\.\s*\(\d{4}\)',  # "et al. (2020)"
+                r'doi:\s*10\.',  # DOI patterns
+                r'PMID:\s*\d+',  # PubMed IDs
+            ]
+            import re
+            
+            def is_reference_chunk(content: str) -> bool:
+                """Check if chunk appears to be from references/bibliography section."""
+                # Check first 200 chars for reference patterns
+                sample = content[:200]
+                for pattern in REFERENCE_PATTERNS:
+                    if re.search(pattern, sample, re.IGNORECASE | re.MULTILINE):
+                        return True
+                # Also check if most lines look like citations (short with years)
+                lines = content.split('\n')[:5]
+                citation_like = sum(1 for l in lines if re.search(r'\(\d{4}\)', l) or re.search(r'\d{4};\d+', l))
+                return citation_like >= 3
+            
+            # Filter out reference chunks
+            filtered_data = [
+                (d, m, s) for d, m, s in zip(documents, metadatas, scores)
+                if not is_reference_chunk(d)
+            ]
+            
+            if filtered_data:
+                documents, metadatas, scores = zip(*filtered_data)
+                documents, metadatas, scores = list(documents), list(metadatas), list(scores)
+                print(f"DEBUG: After filtering references: {len(documents)} chunks remain.")
+            else:
+                print("DEBUG: All chunks were references. Using original results.")
+
             # Re-rank using local cross-encoder for precision
-            if use_reranking and len(documents) > 0:
+            if use_reranking and self.reranker and len(documents) > 0:
+
                 pairs = [[query, doc] for doc in documents]
                 rerank_scores = self.reranker.predict(pairs)
 
@@ -168,6 +211,21 @@ class VectorDB:
                 documents = [documents[i] for i in sorted_indices]
                 metadatas = [metadatas[i] for i in sorted_indices]
                 scores = [rerank_scores[i] for i in sorted_indices]
+            else:
+                # FALLBACK: CrossEncoder unavailable - use similarity threshold filtering
+                # Filter out low-quality results (cosine sim < 0.3) and take top n_results
+                MIN_SIMILARITY = 0.3
+                filtered = [(d, m, s) for d, m, s in zip(documents, metadatas, scores) if s >= MIN_SIMILARITY]
+                
+                if filtered:
+                    documents, metadatas, scores = zip(*filtered[:n_results])
+                    documents, metadatas, scores = list(documents), list(metadatas), list(scores)
+                else:
+                    # If all results are low quality, still return top n_results but warn
+                    documents = documents[:n_results]
+                    metadatas = metadatas[:n_results]
+                    scores = scores[:n_results]
+                    print(f"Warning: All results below similarity threshold. Using top {n_results} anyway.")
 
             return {
                 "documents": documents,

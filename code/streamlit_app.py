@@ -504,7 +504,12 @@ def process_query(query: str):
         print(f"Invoking agent with {len(history)} messages...")
 
         # Invoke agent
-        result = st.session_state.agent.invoke(initial_state)
+        from code.agent import user_id_var
+        token = user_id_var.set(st.session_state.get("user_id", "default_user"))
+        try:
+            result = st.session_state.agent.invoke(initial_state)
+        finally:
+            user_id_var.reset(token)
 
         if not result.get("messages"):
             return "I am sorry, but I couldn't generate a response. Please try again"

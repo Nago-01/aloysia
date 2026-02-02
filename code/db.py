@@ -15,7 +15,8 @@ class VectorDB:
         Initialize the cloud vector database.
         """
         self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_key = os.getenv("SUPABASE_KEY")
+        # Prefer Service Role Key for backend operations to bypass RLS
+        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_KEY"))
         self.table_name = os.getenv("SUPABASE_TABLE_NAME", "documents")
         
         if not self.supabase_url or not self.supabase_key:
@@ -82,8 +83,13 @@ class VectorDB:
         all_metadatas = []
 
         for doc in documents:
-            text = doc.get("content", "")
-            metadata = doc.get("metadata", {}).copy()
+            if isinstance(doc, dict):
+                text = doc.get("content", "")
+                metadata = doc.get("metadata", {}).copy()
+            else:
+                # Handle LangChain Document objects
+                text = getattr(doc, "page_content", "")
+                metadata = getattr(doc, "metadata", {}).copy()
             
             # Security: Add user_id to metadata for filtering
             metadata["user_id"] = user_id
@@ -137,12 +143,15 @@ class VectorDB:
             # 2. Call the 'match_documents' RPC function directly
             print(f"DEBUG: Searching Supabase for '{query[:30]}...' (user_id: {user_id})")
             
+
+            print(f"DEBUG: Executing RPC match_documents with filter: {{'user_id': '{user_id}'}} (Type: {type(user_id)})")
+            
             response = self.client.rpc(
                 "match_documents",
                 {
                     "query_embedding": query_embedding,
-                    "match_threshold": 0.1, # Slightly higher than 0.0 for basic signal
-                    "match_count": n_results * 4 if use_reranking else n_results, # Over-sample for local reranker
+                    "match_threshold": 0.1, 
+                    "match_count": n_results * 4 if use_reranking else n_results,
                     "filter": {"user_id": user_id}
                 }
             ).execute()

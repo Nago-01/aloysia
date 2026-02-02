@@ -17,6 +17,10 @@ import arxiv
 # Load environment variables
 load_dotenv()
 
+# Context Variable for User ID (RLS support)
+import contextvars
+user_id_var = contextvars.ContextVar("user_id", default="default_user")
+
 # Supressing warnings
 os.environ["GRPC_VERBOSITY"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
@@ -33,6 +37,7 @@ class AgentState(TypedDict):
     loop_count: int
     original_query: str
     selected_model: str # 'groq' or 'gemini'
+    user_id: str
 
 
 def manage_context_window(messages: list) -> list:
@@ -224,6 +229,13 @@ def rag_search(query: str) -> str:
     rag = get_rag()
     print("Using cached RAG assistant")
 
+    # Get user_id from context for RLS
+    try:
+        current_user = user_id_var.get()
+    except LookupError:
+        current_user = "default_user"
+    print(f"DEBUG: Agent searching as user: {current_user}")
+
 
     # Expand short queries for better results
     if len(query.split()) <= 3:
@@ -233,7 +245,7 @@ def rag_search(query: str) -> str:
 
 
     # Get search results with metadata
-    results = rag.db.search(expanded_query, n_results=8, use_reranking=True)
+    results = rag.db.search(expanded_query, n_results=8, use_reranking=True, user_id=current_user)
     
     
     # Check if we got any results
@@ -353,8 +365,14 @@ def generate_bibliography() -> str:
     rag = get_rag()
 
     try:
+        # Get user_id from context
+        try:
+            current_user = user_id_var.get()
+        except LookupError:
+            current_user = "default_user"
+            
         # Fetch all metadata from Supabase
-        all_metadatas = rag.db.list_all_metadata()
+        all_metadatas = rag.db.list_all_metadata(user_id=current_user)
         seen_sources = set()
         bibliography = []
 
@@ -418,7 +436,13 @@ def generate_literature_review(topic: str, max_sources: int = 10) -> str:
     rag = get_rag()
 
     try:
-        results = rag.db.search(topic, n_results=max_sources, use_reranking=True)
+        # Get user_id from context
+        try:
+            current_user = user_id_var.get()
+        except LookupError:
+            current_user = "default_user"
+
+        results = rag.db.search(topic, n_results=max_sources, use_reranking=True, user_id=current_user)
 
         if not results["documents"]:
             return f"No literature found on topic '{topic}'."
@@ -511,8 +535,14 @@ def export_bibliography(format: str = "word") -> str:
     rag = get_rag()
 
     try:
+        # Get user_id from context
+        try:
+            current_user = user_id_var.get()
+        except LookupError:
+            current_user = "default_user"
+            
         # Fetch all metadata from Supabase
-        all_metadatas = rag.db.list_all_metadata()
+        all_metadatas = rag.db.list_all_metadata(user_id=current_user)
         seen_sources = set()
         bibliography = []
 
@@ -571,7 +601,13 @@ def export_literature_review(topic: str, format: str = "word") -> str:
     rag = get_rag()
 
     try:
-        results = rag.db.search(topic, n_results=10, use_reranking=True)
+        # Get user_id from context
+        try:
+            current_user = user_id_var.get()
+        except LookupError:
+            current_user = "default_user"
+
+        results = rag.db.search(topic, n_results=10, use_reranking=True, user_id=current_user)
 
         if not results.get("documents"):
             return f"No literature found on the topic: {topic}"

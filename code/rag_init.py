@@ -1,16 +1,31 @@
 """RAG Initialization Script with Streamlit interface"""
 
 from pathlib import Path
-import streamlit as st
+import sys
+
+# Global singleton cache for Bot/Script usage
+_rag_cache = {"instance": None}
+
 
 
 
 def initialize_rag():
-    """Initialize RAG assistant with Streamlit state session as primary cache"""
+    """Initialize RAG assistant - Supports both Streamlit and Bot execution"""
 
-    if 'rag_assistant' in st.session_state and st.session_state.rag_assistant is not None:
-        print(f"\nUsing cached RAG from Streamlit session state")
-        return st.session_state.rag_assistant
+    # 1. Check Streamlit Session State (if running in Streamlit)
+    try:
+        import streamlit as st
+        if "streamlit" in sys.modules and hasattr(st, "session_state"):
+            if 'rag_assistant' in st.session_state and st.session_state.rag_assistant is not None:
+                print(f"\nUsing cached RAG from Streamlit session state")
+                return st.session_state.rag_assistant
+    except (ImportError, AttributeError):
+        pass
+
+    # 2. Check Global Cache (for Bot/Script)
+    if _rag_cache["instance"] is not None:
+        print(f"\nUsing cached RAG from global memory")
+        return _rag_cache["instance"]
 
     print("\nFIRST-TIME RAG INITIALIZATION...")
     print("="*50)
@@ -50,8 +65,18 @@ def initialize_rag():
     print(f"Adding {len(docs)} document chunks to the Vector DB...")
     assistant.add_doc(docs)
 
-    st.session_state.rag_assistant = assistant
-    st.session_state.rag_initialized = True
+    # 3. Store in Caches
+    _rag_cache["instance"] = assistant
+    
+    try:
+        import streamlit as st
+        # heuristics to check if running in streamlit
+        if "streamlit" in sys.modules and hasattr(st, "session_state"):
+            if st.runtime.exists():
+                st.session_state.rag_assistant = assistant
+                st.session_state.rag_initialized = True
+    except (ImportError, AttributeError):
+        pass
         
     print("RAG INITIALIZATION COMPLETE")
     return assistant
@@ -59,22 +84,41 @@ def initialize_rag():
 
 
 def get_rag():
-    """Get RAG assistant always from Streamlit session state"""
+    """Get RAG assistant - robustly handles both envs"""
 
-    if 'rag_assistant' in st.session_state and st.session_state.rag_assistant is not None:
-        return st.session_state.rag_assistant
+    # Try Streamlit first
+    try:
+        import streamlit as st
+        if "streamlit" in sys.modules and hasattr(st, "session_state"):
+             if 'rag_assistant' in st.session_state and st.session_state.rag_assistant is not None:
+                return st.session_state.rag_assistant
+    except (ImportError, AttributeError):
+        pass
 
-    # If it is not in session state, initialize it
-    print("RAG not found in session state, initializing...")
+    # Try Global Cache
+    if _rag_cache["instance"] is not None:
+        return _rag_cache["instance"]
+
+    # Not found -> Init
+    print("RAG not found in cache, initializing...")
     return initialize_rag()
 
 
 
 def reset_rag():
     """Reset the RAG assistant (clear session state)"""
-    if 'rag_assistant' in st.session_state:
-        del st.session_state.rag_assistant
-    if 'rag_initialized' in st.session_state:
-        del st.session_state.rag_initialized
+    # Clear Streamlit Cache
+    try:
+        import streamlit as st
+        if "streamlit" in sys.modules and hasattr(st, "session_state"):
+            if 'rag_assistant' in st.session_state:
+                del st.session_state.rag_assistant
+            if 'rag_initialized' in st.session_state:
+                del st.session_state.rag_initialized
+    except (ImportError, AttributeError):
+        pass
+        
+    # Clear Global Cache
+    _rag_cache["instance"] = None
 
     print("RAG reset from session state")

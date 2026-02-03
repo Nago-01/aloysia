@@ -244,11 +244,27 @@ class AloysiaBot:
                 "user_id": user_id  # RLS Enforced Isolation!
             }
             
-            # Run Agent
-            # Set context variable for RLS
+            # Run Agent in a separate thread to avoid blocking the event loop
+            # and add a timeout to prevent indefinite hangs
             token = user_id_var.set(user_id)
             try:
-                result = self.agent.invoke(initial_state)
+                # Local function to ensure 'self.agent' lazy-init happens in the thread
+                def _run_agent_sync():
+                    return self.agent.invoke(initial_state)
+
+                # 3 minute timeout for complex RAG tasks
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(_run_agent_sync), 
+                    timeout=180.0
+                )
+            except asyncio.TimeoutError:
+                logger.error("Agent execution timed out after 180s")
+                await context.bot.edit_message_text(
+                    "❌ I'm sorry, the research task took too long (Timeout). Please try a simpler question.",
+                    chat_id=chat_id,
+                    message_id=thinking_msg.message_id
+                )
+                return
             finally:
                 user_id_var.reset(token)
             

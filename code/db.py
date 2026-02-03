@@ -13,12 +13,17 @@ class VectorDB:
         Initialize the cloud vector database.
         """
         self.supabase_url = os.getenv("SUPABASE_URL")
-        # Prefer Service Role Key for backend operations to bypass RLS
         self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_KEY"))
         self.table_name = os.getenv("SUPABASE_TABLE_NAME", "documents")
         
+        # Debugging for Render logs
+        if not self.supabase_url:
+            print("❌ ERROR: SUPABASE_URL is missing from environment variables!")
+        if not self.supabase_key:
+            print("❌ ERROR: SUPABASE_KEY/SERVICE_ROLE_KEY is missing!")
+            
         if not self.supabase_url or not self.supabase_key:
-            print("WARNING: Supabase credentials missing in .env")
+            raise ValueError("Required Supabase environment variables (SUPABASE_URL, SUPABASE_KEY) are missing.")
 
         # Initialize Supabase client
         self.client: Client = create_client(self.supabase_url, self.supabase_key)

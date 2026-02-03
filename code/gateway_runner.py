@@ -16,8 +16,31 @@ class RedirectHandler(BaseHTTPRequestHandler):
         self.send_header('Location', 'https://t.me/Aloysia_telegram_bot')
         self.end_headers()
 
+def check_environment():
+    """Verify that all required environment variables are present."""
+    required_vars = [
+        "TELEGRAM_BOT_TOKEN",
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "GEMINI_API_KEY"
+    ]
+    missing = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing:
+        print("❌ CRITICAL ERROR: Missing environment variables!")
+        for var in missing:
+            print(f"   - {var} is NOT SET")
+        print("\nPlease check your Render Dashboard -> Environment tab.")
+        return False
+    
+    print("✅ Environment Check Passed. All required keys found.")
+    return True
+
 def run_gateway():
     """Run a tiny HTTP gateway to redirect to Telegram and satisfy Render."""
+    if not check_environment():
+        print("🛑 Gateway will still run to keep Render happy, but Bot will likely fail.")
+        
     port = int(os.getenv("PORT", "10000"))
     print(f"🚀 Telegram Gateway starting on port {port}...")
     server = HTTPServer(('0.0.0.0', port), RedirectHandler)

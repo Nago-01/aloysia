@@ -34,27 +34,56 @@ Aloysia uses a split architecture:
 
 ```mermaid
 graph TD
-    subgraph Cloud["Production (Render + Supabase)"]
-        GW("Gateway Redirector<br>(aloysia.onrender.com)")
-        TG("Telegram Bot<br>(@Aloysia_telegram_bot)")
-        DB[("Supabase Cloud DB<br>(Unified Storage)")]
+    subgraph Interfaces["Interfaces"]
+        direction TB
+        UI("Streamlit App<br>(Local PC)")
+        TG("Telegram Bot<br>(Mobile)")
     end
 
-    subgraph Local["Personal Management (Local PC)"]
-        UI("Streamlit App<br>(Research Dashboard)")
+    subgraph LangGraph["Aloysia Brain (LangGraph)"]
+        LLM("<b>Brain (llm_node)</b><br>Decides tool use or synthesis")
+        ToolsNode("<b>Tools Node</b><br>Executes AI Tools")
+        QC("<b>Evaluator (quality_control)</b><br>Checks tool quality/relevance")
+        Synthesizer("<b>Synthesizer (synthesize)</b><br>Generates final cited answer")
+        
+        subgraph ToolBelt["Tool Belt"]
+            T1[rag_search]
+            T2[web_search]
+            T3[arxiv_search]
+            T4[compare_papers]
+            T5[gen_biblio]
+            T6[gen_review]
+            T7[export_tools]
+        end
     end
 
-    %% Flow
-    GW -->|Redirect| TG
-    TG <-->|Sync & Search| DB
-    UI <-->|Manage & Upload| DB
+    subgraph Data["Data Layer (Supabase)"]
+        DB[("Vector Storage<br>(Semantic Search)")]
+        Meta[("Metadata Store<br>(Page Citations)")]
+    end
+
+    %% Workflow Flow
+    UI & TG -->|"User Query"| LLM
+    
+    LLM -->|"Conditional Edge: Use Tool"| ToolsNode
+    ToolsNode --> ToolBelt
+    ToolBelt <-->|"Semantic Retrieval"| DB & Meta
+    
+    ToolBelt --> QC
+    QC -->|"Conditional: Quality Failed"| LLM
+    QC -->|"Conditional: Quality Passed"| Synthesizer
+    
+    LLM -->|"Conditional Edge: Direct Answer"| Synthesizer
+    Synthesizer -->|"Final Cited Output"| UI & TG
 
     %% Styling
-    classDef cloud fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef local fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef interface fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef logic fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef data fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
     
-    class GW,TG,DB cloud;
-    class UI local;
+    class UI,TG interface;
+    class LLM,ToolsNode,QC,Synthesizer,ToolBelt logic;
+    class DB,Meta data;
 ```
 
 ---

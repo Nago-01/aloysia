@@ -22,3 +22,7 @@ typing-extensions>=4.9.0
 
 # arXiv integration
 arxiv>=2.1.0
+
+# Telegram & Cloud DB
+python-telegram-bot>=21.0
+supabase>=2.3.0

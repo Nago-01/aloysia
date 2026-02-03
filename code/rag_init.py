@@ -30,40 +30,40 @@ def initialize_rag():
     print("\nFIRST-TIME RAG INITIALIZATION...")
     print("="*50)
 
-
     from .app import QAAssistant
-
     assistant = QAAssistant()
     print("QA Assistant created")
-        
-    # Trying multiple paths if document is not loaded yet
-    possible_paths = [
-        Path("./data"),
-        Path(__file__).resolve().parent/"data",
-        Path(__file__).resolve().parent.parent/"data"
-    ]
 
-    docs = None
-    for data_path in possible_paths:
-        if data_path.exists():
-            try:
-                print(f"Loading documents from {data_path}")
-                from .app import load_publication
+    # OPTIONAL SEEDING: 
+    # Only load from ./data if explicitly requested via environment variable.
+    # In production (Render), we already have the data in Supabase, so we skip this.
+    if os.getenv("SEED_DATA", "false").lower() == "true":
+        print("SEED_DATA=true: Loading initial documents from disk...")
+        possible_paths = [
+            Path("./data"),
+            Path(__file__).resolve().parent/"data",
+            Path(__file__).resolve().parent.parent/"data"
+        ]
 
+        docs = None
+        for data_path in possible_paths:
+            if data_path.exists():
+                try:
+                    print(f"Loading documents from {data_path}")
+                    from .app import load_publication
+                    docs = load_publication(pub_dir=data_path)
+                    print(f"Loaded {len(docs)} document chunks")
+                    break
+                except Exception as e:
+                    print(f"Error loading from {data_path}: {e}")
+                    continue
 
-                docs = load_publication(pub_dir=data_path)
-                print(f"Loaded {len(docs)} document chunks")
-                break
-            except Exception as e:
-                print(f"Error loading from {data_path}: {e}")
-                continue
-
-    if docs is None:
-        raise FileNotFoundError("Could not find data folder")
-
-    # Adding documents to Vector DB
-    print(f"Adding {len(docs)} document chunks to the Vector DB...")
-    assistant.add_doc(docs)
+        if docs:
+            # Adding documents to Vector DB
+            print(f"Adding {len(docs)} document chunks to the Vector DB...")
+            assistant.add_doc(docs)
+    else:
+        print("SEED_DATA=false: Skipping initial document loading (using Supabase library).")
 
     # 3. Store in Caches
     _rag_cache["instance"] = assistant

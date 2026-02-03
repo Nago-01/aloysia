@@ -42,8 +42,24 @@ TEMP_DIR.mkdir(exist_ok=True)
 
 class AloysiaBot:
     def __init__(self):
-        self.agent = create_agentic_rag()
-        self.db = VectorDB()  # Initialize DB connection
+        self._agent = None
+        self._db = None
+
+    @property
+    def agent(self):
+        """Lazy-initialize agent only when needed."""
+        if self._agent is None:
+            from code.agent import create_agentic_rag
+            self._agent = create_agentic_rag()
+        return self._agent
+
+    @property
+    def db(self):
+        """Lazy-initialize DB only when needed."""
+        if self._db is None:
+            from code.db import VectorDB
+            self._db = VectorDB()
+        return self._db
 
     def _resolve_user_id(self, chat_id: str) -> str:
         """Helper to get the mapped email for a chat_id, or return chat_id if not linked."""

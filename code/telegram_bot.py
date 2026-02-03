@@ -58,12 +58,13 @@ class AloysiaBot:
         user = update.effective_user
         await update.message.reply_html(
             f"👋 Hi {user.mention_html()}! I'm <b>Aloysia</b>, your Agentic Research Assistant.\n\n"
-            f"I can help you review documents and answer research questions.\n\n"
-            f"<b>How to use me:</b>\n"
-            f"1. 📤 <b>Upload a paper in PDF/docs/txt format</b> directly in this chat to add it to your library.\n"
-            f"2. 💬 <b>Ask a question</b> and I'll search your papers for answers.\n"
-            f"3. 📚 Use /library to see what you've uploaded.\n\n"
-            f"<i>Note: Your papers are private and isolated to this chat.</i>"
+            f"I help you research, summarize, and cite papers directly from Telegram.\n\n"
+            f"<b>🚀 Quick Start:</b>\n"
+            f"1. 📤 <b>Upload a PDF</b> - I'll read and index it for your personal library.\n"
+            f"2. 💬 <b>Ask a Question</b> - I'll search your papers and provide cited answers.\n"
+            f"3. 🔗 <b>Sync Accounts</b> - Use <code>/link your@email.com</code> to sync your knowledge base with the Aloysia Web Portal.\n\n"
+            f"📚 Use /library to see your papers.\n"
+            f"❓ Use /help for all commands."
         )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

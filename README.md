@@ -1,32 +1,30 @@
-# Aloysia — Agentic Research Assistant with Full-Stack RAG
+# Aloysia — Agentic Research Assistant
 
-**Aloysia** is a production-ready, agentic research assistant that turns your PDFs, DOCX, and text files into a **page-aware, citation-rich knowledge base**. Powered by **Supabase & LangGraph**, it autonomously decides when to search documents, compare papers, generate literature reviews, export bibliographies, retrieve papers research archives (ArXiv) or fetch real-time web data, all with **academic-grade citations**.
+**Aloysia** is a production-ready, agentic research assistant that turns your PDFs, DOCX, and text files into a **page-aware, citation-rich knowledge base**. Powered by **Supabase & LangGraph**, it autonomously decides when to search documents, compare papers, or fetch real-time web data, all with **academic-grade citations**.
 
-Built for researchers, clinicians, students, and health-tech teams.
+Built for researchers, clinicians, and students on the go, Aloysia follows a **Mobile-First/Telegram-First** architecture, allowing you to manage and query your research library directly from your pocket or your PC.
 
 ---
 
-## Live Demo & Web UI
-**Now with a beautiful Streamlit web interface and Telegram Bot!**  
-Run `streamlit run code/streamlit_app.py` → full chat + tools + export UI  
-Run `python code/telegram_bot.py` → Chat via Telegram on your phone 
+## The Architecture
+Aloysia uses a split architecture:
+
+1.  **Cloud Portal (Render)**: Runs the **Telegram Bot** and a lightweight **HTTP Gateway** that redirects all web traffic to Telegram.
+2.  **Local Dashboard (Your PC)**: Run the beautiful **Streamlit UI** locally to manage your library with rich visuals and batch tools.
+3.  **Unified Knowledge Base (Supabase)**: Both platforms share the same cloud database. A paper uploaded on your PC is instantly searchable on your phone.
 
 ---
 
 ## What Aloysia Does
 
-| Feature                        | Status | Description |
-|-------------------------------|-------|-----------|
-| Page-level RAG + citations    | Done  | Every answer includes `Source: file.pdf, Page: 12` |
-| Cross-encoder reranking       | Done  | `ms-marco-MiniLM-L-6-v2` for maximum relevance |
-| Agentic workflow (LangGraph)  | Done  | Autonomously chooses tools |
-| 9 Smart Tools                 | Done  | Search, compare, review, export, web search, calculator |
-| Export bibliography & reviews | Done  | Word • LaTeX • Markdown |
-| Real-time web search          | Done  | Tavily-powered (when documents lack info) |
-| Streamlit Web UI              | Done  | Chat + sidebar tools + dark theme |
-| Telegram Bot Interface        | Done  | Chat & Upload files from mobile |
-| Supabase Vector DB (Cloud)    | Done  | Scalable, cloud-native storage |
-| Row Level Security (RLS)      | Done  | Multi-user data isolation by User ID |
+| Feature | Platform | Description |
+| :--- | :--- | :--- |
+| **Page-level RAG** | Both | Factual answers with `Source: file.pdf, Page: 12` |
+| **Agentic Workflow** | Both | Autonomously chooses between 9+ research tools |
+| **Mobile Research** | Telegram | Search, summarize, and upload papers on the go |
+| **Rich Dashboards** | Web (Local) | Literature reviews, bibliographies, and batch uploads |
+| **Account Sync** | Both | Sync Telegram ID with your email via `/link` |
+| **Enterprise Security**| Supabase | Row Level Security (RLS) ensures data isolation |
 
 ---
 
@@ -36,150 +34,93 @@ Run `python code/telegram_bot.py` → Chat via Telegram on your phone
 
 ```mermaid
 graph TD
-    subgraph Interfaces["Interfaces"]
-        direction TB
-        UI("Streamlit App<br>(Web Interface)")
-        TG("Telegram Bot<br>(Mobile Chat)")
+    subgraph Cloud["Production (Render + Supabase)"]
+        GW("Gateway Redirector<br>(aloysia.onrender.com)")
+        TG("Telegram Bot<br>(@Aloysia_telegram_bot)")
+        DB[("Supabase Cloud DB<br>(Unified Storage)")]
     end
 
-    subgraph Backend["Aloysia Core"]
-        Router{"Input Router"}
-        Agent("LangGraph Agent")
-        
-        subgraph Tools["Tool Belt"]
-            T1[rag_search]
-            T2[compare_documents]
-            T3[generate_bibliography]
-            T4[generate_review]
-            T5[web_search]
-            T6[calculator]
-            T7[export_tools]
-        end
+    subgraph Local["Personal Management (Local PC)"]
+        UI("Streamlit App<br>(Research Dashboard)")
     end
 
-    subgraph Data["Data Layer (Supabase)"]
-        Auth("RLS Security Policy<br>(User Isolation)")
-        VectorDB[("Vector Store<br>(Embeddings)")]
-        Metastore[("Metadata<br>(Citations)")]
-    end
-
-    %% Flow Connections
-    UI -->|Session State| Router
-    TG -->|Chat ID| Router
-    
-    Router -->|Query + UserID| Agent
-    Agent <--> Tools
-    
-    Tools -->|Search/Filter| Auth
-    Auth -->|Verified Access Only| VectorDB
-    Auth -->|Retrieve| Metastore
+    %% Flow
+    GW -->|Redirect| TG
+    TG <-->|Sync & Search| DB
+    UI <-->|Manage & Upload| DB
 
     %% Styling
-    classDef interface fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef logic fill:#fff3e0,stroke:#e65100,stroke-width:2px;
-    classDef data fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
+    classDef cloud fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef local fill:#fff3e0,stroke:#e65100,stroke-width:2px;
     
-    class UI,TG interface;
-    class Router,Agent,Tools logic;
-    class Auth,VectorDB,Metastore data;
+    class GW,TG,DB cloud;
+    class UI local;
 ```
 
+---
 
 ## Project Structure
 ```bash
 aloysia/
 ├── code/
-│   ├── app.py              # Document loading, metadata extraction, QAAssistant
-│   ├── db.py               # Supabase Vector Store + Gemini Embeddings
-│   ├── rag_init.py         # Hybrid RAG Cache (Streamlit + Bot support)
-│   ├── agent.py            # LangGraph agent, all 9 tools, workflow
-│   ├── telegram_bot.py     # Telegram Bot Interface
-│   ├── export_utils.py     # Word/LaTeX/Markdown exporters
-│   ├── streamlit_app.py    # Web UI (chat + tools + uploads)
-│   └── __init__.py
-├── data/                   # Put your PDFs, DOCX, TXT, MD here
-├── requirements.txt        # Dependencies
-└── .env                    # API keys & config
+│   ├── gateway_runner.py   # Render Entry Point (Bot + Redirector)
+│   ├── telegram_bot.py     # Mobile Bot Interface
+│   ├── streamlit_app.py    # Desktop Research Dashboard
+│   ├── agent.py            # LangGraph agent & tool definitions
+│   ├── db.py               # Supabase & Gemini Embedding logic
+│   ├── rag_init.py         # RAG Caching & Initialization
+│   └── app.py              # Document processing & extraction
+├── requirements.txt        # Core dependencies
+└── .env                    # Private API keys
 ```
 
+---
 
+## Installation & Setup
 
-## Installation
-### 1. Clone the repository
+### 1. Clone & Environment
 ```bash
 git clone https://github.com/Nago-01/aloysia.git
 cd aloysia
-```
-
-### 2. Create virtual environment
-```bash
-# Unix/macOS
 python -m venv .venv
-source .venv/bin/activate
-
-# Windows
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-
-### 3. Install dependencies
-```bash
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
-### Set Up `.env`
-```
-# LLM Providers (one required)
-GROQ_API_KEY=your_groq_key
-GROQ_MODEL=llama-3.3-70b-versatile
+### 2. Configure `.env`
+Create a `.env` file with these keys:
+```env
+# AI Brain
+GROQ_API_KEY=your_key
+GEMINI_API_KEY=your_key # Required for embeddings
 
-# OR
-GEMINI_API_KEY=your_gemini_key
-GEMINI_MODEL=gemini-2.0-flash-exp
+# Database (Supabase)
+SUPABASE_URL=your_url
+SUPABASE_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# Optional: Real-time web search
+# Integrations
+TELEGRAM_BOT_TOKEN=your_bot_token
 TAVILY_API_KEY=your_tavily_key
-
-# Embedding & DB
-SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key__for_bot
-
 ```
+
+---
 
 ## Usage
-### Add Documents
-Place your research papers in the `data/` folder
-```
-data/
-├── antimicrobial_resistance.pdf
-├── pcos_clinical_guidelines.docx
-└── who_amr_report_2025.md
-```
 
-### Run Aloysia
-#### CLI Agent
-```bash
-python -m code.agent
-```
+### On Telegram
+Users will interact with **@Aloysia_telegram_bot**. 
+- **Start**: Send `/start` to get on-boarded.
+- **Upload**: Forward any PDF/docs/txt files to the bot to index it.
+- **Sync**: Send `/link your@email.com` to connect to your web identity.
 
-#### Streamlit Web UI
+### Local Management (Web UI)
+To manage your documents or generate rich literature reviews:
 ```bash
+# From the project root
 streamlit run code/streamlit_app.py
 ```
 → Upload files via sidebar → chat + use tools
-
-#### Telegram Bot
-```bash
-python code/telegram_bot.py
-```
-→ Send `/start` on Telegram
-→ Upload PDF/DOCX files directly in chat
-→ Ask questions naturally
-
-
-
 
 ### Example Session
 ```
@@ -215,6 +156,7 @@ Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths proje
 | `"What does the AMR paper say on page 5?"` | `rag_search` with citation |
 | `"Compare AMR and Dysmenorrhea on causes"` | `compare_documents` |
 | `"Show bibliography"` | `generate_bibliography` |
+| `"search arxiv for..."` | `arxiv_search` |
 | `"Export references as LaTeX"` | `export_bibliography(format="latex")` |
 | `"Write a review on PCOS"` | `generate_literature_review` + synthesis |
 | `"Save review as Markdown"` | `export_literature_review(format="md")` |
@@ -231,6 +173,7 @@ Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths proje
 | `compare_documents` | """compare X and Y"", ""difference between...""" |
 | `generate_bibliography` | """show sources"", ""list documents""" |
 | `generate_literature_review` | """write a review on..."", ""summarize research""" |
+| `arxiv_search` | """search arxiv for..."", ""find papers on...""" |
 | `export_bibliography` | """export references as Word""" |
 | `export_literature_review` | """save review as PDF/Markdown""" |
 | `web_search` | Only after confirming with user |
@@ -246,14 +189,13 @@ Aloysia: [Uses web_search] According to WHO (Nov 2025): "Global AMR deaths proje
 |-------|------|
 | **LLM** | Groq (`llama-3.3-70b`) or Gemini (`2.0-flash`) |
 | **Embeddings** | Gemini (`models/text-embedding-004`) |
-| **Reranking** | `ms-marco-MiniLM-L-6-v2` |
 | **Vector DB** | Supabase (pgvector) |
 | **Agent Framework** | LangGraph |
 | **Document Parsing** | PyPDF2, python-docx |
 | **Export** | python-docx, LaTeX, Markdown |
 | **Web Search** | Tavily |
 | **CLI** | Built-in interactive loop |
-| **Frontend** | Streamlit |
+| **Frontend(Local)** | Streamlit |
 
 
 

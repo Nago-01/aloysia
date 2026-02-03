@@ -4,8 +4,6 @@ from supabase.client import create_client, Client
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_experimental.text_splitter import SemanticChunker
-from sentence_transformers import CrossEncoder
-
 class VectorDB:
     """
     Cloud-ready Vector database using Supabase and Gemini Embeddings.
@@ -47,10 +45,12 @@ class VectorDB:
             self.reranker = None
         else:
             try:
+                print("Checking for Cross-Encoder libraries...")
+                from sentence_transformers import CrossEncoder
                 print("Initializing local Cross-Encoder...")
                 self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
             except Exception as e:
-                print(f"Warning: Cross-Encoder failed to initialize ({e}). Falling back to standard cosine similarity.")
+                print(f"Warning: Cross-Encoder skipped or failed ({e}). Falling back to standard cosine similarity.")
                 self.reranker = None
         
         # Initialize Vector Store

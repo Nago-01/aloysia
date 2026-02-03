@@ -3,7 +3,7 @@ services:
     name: aloysia-aio # All In One
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python code/main_aio.py
+    startCommand: python code/gateway_runner.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0

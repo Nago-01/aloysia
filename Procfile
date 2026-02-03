@@ -1,1 +1,1 @@
-web: python code/main_aio.py
+web: python code/gateway_runner.py

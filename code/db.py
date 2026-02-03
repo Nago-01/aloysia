@@ -302,3 +302,29 @@ class VectorDB:
         if documents:
             self.add_doc(documents, user_id=user_id)
         return len(documents)
+
+    def link_user(self, telegram_id: str, email: str) -> bool:
+        """Associate a Telegram ID with an email in Supabase."""
+        try:
+            data = {
+                "telegram_id": str(telegram_id),
+                "email": email.lower().strip()
+            }
+            # Upsert mapping
+            self.client.from_("user_mappings").upsert(data).execute()
+            return True
+        except Exception as e:
+            print(f"Error linking user: {e}")
+            return False
+
+    def get_mapped_user(self, telegram_id: str) -> str:
+        """Get the email associated with a Telegram ID. Returns telegram_id if not found."""
+        try:
+            response = self.client.from_("user_mappings").select("email").eq("telegram_id", str(telegram_id)).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]["email"]
+        except Exception as e:
+            # Table might not exist yet
+            pass
+        
+        return str(telegram_id)

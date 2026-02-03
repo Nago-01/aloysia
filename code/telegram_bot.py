@@ -45,6 +45,10 @@ class AloysiaBot:
         self.agent = create_agentic_rag()
         self.db = VectorDB()  # Initialize DB connection
 
+    def _resolve_user_id(self, chat_id: str) -> str:
+        """Helper to get the mapped email for a chat_id, or return chat_id if not linked."""
+        return self.db.get_mapped_user(chat_id)
+
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Send a message when the command /start is issued."""
         user = update.effective_user
@@ -64,32 +68,54 @@ class AloysiaBot:
             "<b>Available Commands:</b>\n\n"
             "/start - Restart and see instructions\n"
             "/library - List your uploaded papers\n"
+            "/link [email] - Link your account to the Web App\n"
             "/clear - Clear conversation history context\n"
             "/help - Show this help message\n\n"
             "<b>Features:</b>\n"
             "• Send any PDF file to add it to your knowledge base\n"
-            "• Send text to ask questions about your papers"
+            "• Send text to ask questions about your papers\n"
+            "• Linked accounts share the same library on Web and Mobile!"
         )
         await update.message.reply_html(help_text)
+
+    async def link_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Link Telegram account to an email for cross-platform sync."""
+        chat_id = str(update.effective_chat.id)
+        if not context.args:
+            await update.message.reply_html(
+                "❌ <b>Missing Email</b>\n\nUsage: <code>/link user@example.com</code>\n\n"
+                "Once linked, your Telegram bot will share the same library as your Web App."
+            )
+            return
+
+        email = context.args[0].lower().strip()
+        if "@" not in email or "." not in email:
+            await update.message.reply_text("❌ Please provide a valid email address.")
+            return
+
+        success = self.db.link_user(chat_id, email)
+        if success:
+            await update.message.reply_html(
+                f"✅ <b>Account Linked!</b>\n\nYour Telegram bot is now synced with <b>{email}</b>.\n"
+                "All papers you upload here will appear on the Web App, and vice versa."
+            )
+        else:
+            await update.message.reply_text("❌ Failed to link account. Please try again later.")
 
     async def list_library(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """List documents uploaded by the user."""
         chat_id = str(update.effective_chat.id)
+        user_id = self._resolve_user_id(chat_id)
         
-        await update.message.reply_text("📚 Checking your library...")
+        await update.message.reply_text(f"📚 Checking library for {user_id if '@' in user_id else 'your account'}...")
         
         try:
-            # We can't efficiently query by metadata in Supabase via simple list
-            # So we use a dummy search to get unique sources for this user
-            # Ideally we'd add a specialized method in db.py, but this works for MVP
-            results = self.db.list_all_metadata() 
+            # Fetch all metadata but filter by resolved user_id
+            results = self.db.list_all_metadata(user_id=user_id) 
             
-            # Filter manually for this user (since list_all_metadata gets everything)
-            # Optimization: In production, add get_user_docs(user_id) to db.py
             user_docs = set()
             for meta in results:
-                if str(meta.get("user_id")) == chat_id:
-                     user_docs.add(meta.get("source", "Unknown"))
+                user_docs.add(meta.get("source", "Unknown"))
             
             if user_docs:
                 doc_list = "\n".join([f"• {doc}" for doc in sorted(user_docs)])
@@ -134,6 +160,8 @@ class AloysiaBot:
             # Format for VectorDB
             from langchain_core.documents import Document
             
+            user_id = self._resolve_user_id(chat_id)
+            
             docs = []
             for chunk in chunks_data:
                 docs.append(Document(
@@ -141,13 +169,13 @@ class AloysiaBot:
                     metadata={
                         "source": document.file_name,
                         "page": chunk["page_number"],
-                        "user_id": chat_id, # RLS Isolation
+                        "user_id": user_id, # RLS Isolation (Linked or chat_id)
                     }
                 ))
             
             # Add to DB
             if docs:
-                self.db.add_doc(docs, user_id=chat_id)
+                self.db.add_doc(docs, user_id=user_id)
                 msg = f"✅ <b>{document.file_name}</b> added to your library!\n\nYou can now ask questions about it."
             else:
                 msg = f"⚠️ Could not extract text from <b>{document.file_name}</b>."
@@ -193,18 +221,20 @@ class AloysiaBot:
             
             from langchain_core.messages import HumanMessage
             
+            user_id = self._resolve_user_id(chat_id)
+            
             initial_state = {
                 "messages": [HumanMessage(content=query)],
                 "quality_passed": True,
                 "loop_count": 0,
                 "original_query": query,
                 "selected_model": "groq",  # Default to fast model for Bot
-                "user_id": chat_id  # RLS Enforced Isolation!
+                "user_id": user_id  # RLS Enforced Isolation!
             }
             
             # Run Agent
             # Set context variable for RLS
-            token = user_id_var.set(chat_id)
+            token = user_id_var.set(user_id)
             try:
                 result = self.agent.invoke(initial_state)
             finally:
@@ -285,6 +315,7 @@ def main():
     application.add_handler(CommandHandler("start", bot.start))
     application.add_handler(CommandHandler("help", bot.help_command))
     application.add_handler(CommandHandler("library", bot.list_library))
+    application.add_handler(CommandHandler("link", bot.link_command)) # New!
     application.add_handler(MessageHandler(filters.Document.PDF, bot.handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 

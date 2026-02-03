@@ -35,6 +35,8 @@ def run_telegram_bot():
         bot_main()
     except Exception as e:
         print(f"❌ Telegram Bot error: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     # 1. Start Telegram Bot in a background thread

@@ -9,7 +9,6 @@ tavily-python
 langchain_experimental
 
 # Vector database & embeddings
-chromadb>=0.5.0
 
 # Document parsing
 PyPDF2>=3.0.0

@@ -57,12 +57,12 @@ class AloysiaBot:
         """Send a message when the command /start is issued."""
         user = update.effective_user
         await update.message.reply_html(
-            f"👋 Hi {user.mention_html()}! I'm <b>Aloysia</b>, your Agentic Research Assistant.\n\n"
+            f"Hi {user.mention_html()}! I'm <b>Aloysia</b>, your Agentic Research Assistant.\n\n"
             f"I help you research, summarize, and cite papers directly from Telegram.\n\n"
-            f"<b>🚀 Quick Start:</b>\n"
-            f"1. 📤 <b>Upload a PDF</b> - I'll read and index it for your personal library.\n"
-            f"2. 💬 <b>Ask a Question</b> - I'll search your papers and provide cited answers.\n"
-            f"3. 🔗 <b>Sync Accounts</b> - Use <code>/link your@email.com</code> to sync your knowledge base with the Aloysia Web Portal.\n\n"
+            f"<b>Quick Start:</b>\n"
+            f"1. <b>Upload a paper</b> - I'll read and index it for your personal library.\n"
+            f"2. <b>Ask a question</b> - I'll search your papers and provide cited answers.\n"
+            f"3. <b>Sync Accounts</b> - Use <code>/link your@email.com</code> to sync your knowledge base with the Aloysia Web Portal.\n\n"
             f"📚 Use /library to see your papers.\n"
             f"❓ Use /help for all commands."
         )
@@ -102,7 +102,7 @@ class AloysiaBot:
         success = self.db.link_user(chat_id, email)
         if success:
             await update.message.reply_html(
-                f"✅ <b>Account Linked!</b>\n\nYour Telegram bot is now synced with <b>{email}</b>.\n"
+                f"<b>Account Linked!</b>\n\nYour Telegram bot is now synced with <b>{email}</b>.\n"
                 "All papers you upload here will appear on the Web App, and vice versa."
             )
         else:
@@ -110,14 +110,14 @@ class AloysiaBot:
 
     async def clear_state(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clear conversation history (UI level for now)."""
-        await update.message.reply_text("🧹 Conversation history cleared (context reset).")
+        await update.message.reply_text("Conversation history cleared (context reset).")
 
     async def list_library(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """List documents uploaded by the user."""
         chat_id = str(update.effective_chat.id)
         user_id = self._resolve_user_id(chat_id)
         
-        await update.message.reply_text(f"📚 Checking library for {user_id if '@' in user_id else 'your account'}...")
+        await update.message.reply_text(f"Checking library for {user_id if '@' in user_id else 'your account'}...")
         
         try:
             # Fetch all metadata but filter by resolved user_id
@@ -131,7 +131,7 @@ class AloysiaBot:
                 doc_list = "\n".join([f"• {doc}" for doc in sorted(user_docs)])
                 await update.message.reply_text(f"<b>Your Papers ({len(user_docs)}):</b>\n\n{doc_list}", parse_mode="HTML")
             else:
-                await update.message.reply_text("📂 Your library is empty.\n\nUpload a PDF to get started!")
+                await update.message.reply_text("Your library is empty.\n\nUpload a PDF to get started!")
                 
         except Exception as e:
             logger.error(f"Library error: {e}")
@@ -145,20 +145,20 @@ class AloysiaBot:
         # Check extensions
         file_ext = Path(document.file_name).suffix.lower()
         if file_ext not in ['.pdf', '.docx', '.txt']:
-            await update.message.reply_text("⚠️ Please upload PDF, DOCX or TXT files only.")
+            await update.message.reply_text("Please upload PDF, DOCX or TXT files only.")
             return
 
         file = await context.bot.get_file(document.file_id)
         file_path = TEMP_DIR / document.file_name
         
-        status_msg = await update.message.reply_text(f"📥 Downloading <b>{document.file_name}</b>...", parse_mode="HTML")
+        status_msg = await update.message.reply_text(f"Downloading <b>{document.file_name}</b>...", parse_mode="HTML")
         
         try:
             # Download file
             await file.download_to_drive(file_path)
             
             await context.bot.edit_message_text(
-                f"⚙️ Processing <b>{document.file_name}</b>...\n<i>Reading and chunking...</i>",
+                f"Processing <b>{document.file_name}</b>...\n<i>Reading and chunking...</i>",
                 chat_id=chat_id,
                 message_id=status_msg.message_id,
                 parse_mode="HTML"
@@ -187,9 +187,9 @@ class AloysiaBot:
             # Add to DB
             if docs:
                 self.db.add_doc(docs, user_id=user_id)
-                msg = f"✅ <b>{document.file_name}</b> added to your library!\n\nYou can now ask questions about it."
+                msg = f"<b>{document.file_name}</b> added to your library!\n\nYou can now ask questions about it."
             else:
-                msg = f"⚠️ Could not extract text from <b>{document.file_name}</b>."
+                msg = f"Could not extract text from <b>{document.file_name}</b>."
             
             # Clean up
             if file_path.exists():
@@ -345,7 +345,14 @@ def main():
 
     # Run
     print("✅ Bot is polling...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # NOTE: When running in a thread (via gateway_runner.py), 
+    # we MUST disable signal handling (stop_signals=None) 
+    # and not close the loop in this thread if handled elsewhere.
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        stop_signals=None,
+        close_loop=False
+    )
 
 if __name__ == "__main__":
     main()

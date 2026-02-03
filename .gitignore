@@ -44,3 +44,5 @@ chroma_store/
 
 # Jupyter Notebook
 .ipynb_checkpoints/
+
+temp_telegram_uploads/

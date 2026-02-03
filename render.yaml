@@ -1,0 +1,21 @@
+services:
+  # 1. The Streamlit Web App
+  - type: web
+    name: aloysia-web
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run code/streamlit_app.py --server.port $PORT --server.address 0.0.0.0
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      # You will need to add your API keys (GROQ, GEMINI, SUPABASE) in the Render Dashboard
+
+  # 2. The Telegram Bot (Background Worker)
+  - type: worker
+    name: aloysia-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python code/telegram_bot.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0

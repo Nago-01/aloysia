@@ -481,15 +481,18 @@ def process_query(query: str):
             "content": query
         })
         
-        # Build history from session state
+        # Build history from session state (Limit to last 10 for performance)
         history = []
-        for msg in st.session_state.messages[:-1]: # Skip the one we just added (will be added as current input)
+        max_history = 10
+        relevant_messages = st.session_state.messages[-(max_history+1):-1] if len(st.session_state.messages) > max_history else st.session_state.messages[:-1]
+        
+        for msg in relevant_messages:
             if msg["role"] == "user":
                 history.append(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
                 history.append(AIMessage(content=msg["content"]))
         
-        # Current message
+        # Current message (Always included)
         history.append(HumanMessage(content=query))
 
         initial_state = {
@@ -626,25 +629,23 @@ with st.sidebar:
                     st.error(f"Error: {str(e)}")
                     traceback.print_exc()
 
-    # Show loaded documents
+    # Show loaded documents (Cached list to avoid DB lag)
     if st.session_state.get("rag_initialized", False):
         try:
-            from code.rag_init import get_rag
-            rag = get_rag()
-            
-            # Fetch all metadata from Supabase
-            all_metadatas = rag.db.list_all_metadata()
-            unique_sources = set()
-
-            for metadata in all_metadatas:
-                source = metadata.get("source")
-                if source:
-                    unique_sources.add(source)
-            if unique_sources:
-                with st.expander(f"{len(unique_sources)} Documents", expanded=False):
-                    for source in sorted(unique_sources):
+            if 'cached_sources' not in st.session_state or st.button("🔄", help="Refresh Library"):
+                from code.rag_init import get_rag
+                rag = get_rag()
+                
+                # Fetch only for this user
+                all_metadatas = rag.db.list_all_metadata(user_id=st.session_state.user_id)
+                unique_sources = sorted(set([m.get("source", "Unknown") for m in all_metadatas]))
+                st.session_state.cached_sources = unique_sources
+                
+            if st.session_state.cached_sources:
+                with st.expander(f"{len(st.session_state.cached_sources)} Documents", expanded=False):
+                    for source in st.session_state.cached_sources:
                         st.caption(f"• {source}")
-        except Exception as e:
+        except Exception:
             pass
 
     st.divider()
@@ -675,9 +676,23 @@ with st.sidebar:
     if st.button("Literature Review", use_container_width=True):
         st.session_state.page = "review"
     
+    # Clear Chat
     if st.button("Clear Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
+
+    st.divider()
+
+    # Sync to Mobile
+    st.markdown("### Sync to Mobile")
+    st.markdown(f"""
+    Access your documents on Telegram:
+    1. Open [**@Aloysia_telegram_bot**](https://t.me/Aloysia_telegram_bot)
+    2. Send this command:
+    ```
+    /link {st.session_state.user_email}
+    ```
+    """)
 
 
 

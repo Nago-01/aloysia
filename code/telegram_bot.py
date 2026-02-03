@@ -297,6 +297,8 @@ class AloysiaBot:
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("library", self.list_library))
+        application.add_handler(CommandHandler("link", self.link_command))
+        application.add_handler(CommandHandler("clear", self.clear_state))
         
         # File uploads
         application.add_handler(MessageHandler(filters.Document.PDF, self.handle_document))

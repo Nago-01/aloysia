@@ -41,13 +41,17 @@ class VectorDB:
         )
 
         # Initialize cross-encoder for re-ranking (Keep local for quality)
-        # Note: This is 100x smaller than the embedding model
-        try:
-            print("Initializing local Cross-Encoder...")
-            self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-        except Exception as e:
-            print(f"Warning: Cross-Encoder failed to initialize ({e}). Falling back to standard cosine similarity.")
+        # DISABLE ON RENDER FREE TIER to prevent OOM (512MB limit)
+        if os.getenv("DISABLE_RERANKER", "false").lower() == "true":
+            print("Reranker is DISABLED via Env Var (Saving RAM)")
             self.reranker = None
+        else:
+            try:
+                print("Initializing local Cross-Encoder...")
+                self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+            except Exception as e:
+                print(f"Warning: Cross-Encoder failed to initialize ({e}). Falling back to standard cosine similarity.")
+                self.reranker = None
         
         # Initialize Vector Store
         self.vector_store = SupabaseVectorStore(

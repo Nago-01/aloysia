@@ -18,18 +18,6 @@ if project_root not in sys.path:
 from telegram import Update, constants
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Import Aloysia components
-try:
-    from code.agent import create_agentic_rag, user_id_var
-    from code.db import VectorDB
-    from code.app import extract_text_with_page_numbers
-except ImportError:
-    # Fallback for running directly inside code/ folder
-    sys.path.append(str(Path(__file__).resolve().parent))
-    from agent import create_agentic_rag, user_id_var
-    from db import VectorDB
-    from app import extract_text_with_page_numbers
-
 # Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -176,6 +164,7 @@ class AloysiaBot:
             )
             
             # Process using app.py extraction logic
+            from code.app import extract_text_with_page_numbers
             chunks_data = extract_text_with_page_numbers(file_path, file_ext)
             
             # Format for VectorDB
@@ -241,6 +230,7 @@ class AloysiaBot:
             # Future: store history in a dict keyed by chat_id
             
             from langchain_core.messages import HumanMessage
+            from code.agent import user_id_var
             
             user_id = self._resolve_user_id(chat_id)
             
@@ -323,6 +313,7 @@ def main():
     
     # Ensure event loop policy for Windows
     if sys.platform == 'win32':
+        import asyncio
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     # Build app

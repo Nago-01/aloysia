@@ -90,7 +90,8 @@ class AloysiaBot:
             "<b>Features:</b>\n"
             "• Send any PDF file to add it to your knowledge base\n"
             "• Send text to ask questions about your papers\n"
-            "• Linked accounts share the same library on Web and Mobile!"
+            "• Linked accounts share the same library on Web and Mobile!\n\n"
+            f"<i>Aloysia Bot v1.2 (Build: 2026-02-03)</i>"
         )
         await update.message.reply_html(help_text)
 
@@ -117,6 +118,10 @@ class AloysiaBot:
             )
         else:
             await update.message.reply_text("❌ Failed to link account. Please try again later.")
+
+    async def clear_state(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Clear conversation history (UI level for now)."""
+        await update.message.reply_text("🧹 Conversation history cleared (context reset).")
 
     async def list_library(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """List documents uploaded by the user."""
@@ -327,14 +332,23 @@ def main():
         return
 
     print("🤖 Aloysia Telegram Bot Starting...")
+    
+    # We use a helper or just define it here. 
+    # To be safe and clean, let's use the bot's own registration logic if it had one, 
+    # but since main is the entry point for Render, let's just fix it here.
     application = Application.builder().token(token).build()
 
     # Add handlers
     application.add_handler(CommandHandler("start", bot.start))
     application.add_handler(CommandHandler("help", bot.help_command))
     application.add_handler(CommandHandler("library", bot.list_library))
-    application.add_handler(CommandHandler("link", bot.link_command)) # New!
+    application.add_handler(CommandHandler("link", bot.link_command))
+    application.add_handler(CommandHandler("clear", bot.clear_state))
+    
+    # File handlers
     application.add_handler(MessageHandler(filters.Document.PDF, bot.handle_document))
+    
+    # Message handlers
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
     # Run

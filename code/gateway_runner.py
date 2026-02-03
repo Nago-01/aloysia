@@ -22,7 +22,8 @@ def check_environment():
         "TELEGRAM_BOT_TOKEN",
         "SUPABASE_URL",
         "SUPABASE_SERVICE_ROLE_KEY",
-        "GEMINI_API_KEY"
+        "GEMINI_API_KEY",
+        "GROQ_API_KEY"
     ]
     missing = [var for var in required_vars if not os.getenv(var)]
     

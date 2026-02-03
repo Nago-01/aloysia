@@ -913,6 +913,12 @@ def _build_provider_registry():
             "Please set GROQ_API_KEY or GEMINI_API_KEY in your .env file"
         )
     
+    # Print masked keys for Cloud diagnostic
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        masked = f"{groq_key[:6]}...{groq_key[-4:]}" if len(groq_key) > 10 else "***"
+        print(f"DEBUG: GROQ_API_KEY found: {masked}")
+    
     print(f" Provider Registry: {[p['name'] for p in PROVIDER_REGISTRY]}")
 
 def _get_current_provider():

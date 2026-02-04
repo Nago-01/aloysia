@@ -1,7 +1,7 @@
 """RAG Initialization Script with Streamlit interface"""
 
+import os, sys
 from pathlib import Path
-import sys
 
 # Global singleton cache for Bot/Script usage
 _rag_cache = {"instance": None}

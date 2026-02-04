@@ -914,10 +914,15 @@ def _build_provider_registry():
         )
     
     # Print masked keys for Cloud diagnostic
-    groq_key = os.getenv("GROQ_API_KEY")
-    if groq_key:
-        masked = f"{groq_key[:6]}...{groq_key[-4:]}" if len(groq_key) > 10 else "***"
-        print(f"DEBUG: GROQ_API_KEY found: {masked}")
+    def mask(key):
+        if not key: return "NOT SET"
+        return f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***"
+    
+    print(f"DEBUG: GROQ_API_KEY: {mask(os.getenv('GROQ_API_KEY'))}")
+    print(f"DEBUG: GEMINI_API_KEY: {mask(os.getenv('GEMINI_API_KEY'))}")
+    print(f"DEBUG: GOOGLE_API_KEY: {mask(os.getenv('GOOGLE_API_KEY'))}")
+    print(f"DEBUG: SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
+    print(f"DEBUG: SUPABASE_KEY: {mask(os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_KEY'))}")
     
     print(f" Provider Registry: {[p['name'] for p in PROVIDER_REGISTRY]}")
 

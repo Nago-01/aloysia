@@ -63,9 +63,24 @@ def run_telegram_bot():
         traceback.print_exc()
 
 if __name__ == "__main__":
+    import signal
+    
     # 1. Start Telegram Bot in a background thread
     bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
     bot_thread.start()
     
-    # 2. Start Redirect Gateway in the main thread (blocking)
-    run_gateway()
+    # 2. Start Redirect Gateway in the main thread
+    port = int(os.getenv("PORT", "10000"))
+    print(f"🚀 Telegram Gateway starting on port {port}...")
+    server = HTTPServer(('0.0.0.0', port), RedirectHandler)
+    
+    def signal_handler(sig, frame):
+        print(f"🛑 Received signal {sig}, shutting down...")
+        # Closing the server will break the serve_forever loop
+        threading.Thread(target=server.shutdown).start()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    server.serve_forever()

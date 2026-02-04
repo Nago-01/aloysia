@@ -237,17 +237,18 @@ def rag_search(query: str) -> str:
     print(f"DEBUG: Agent searching as user: {current_user}")
 
 
-    # Expand short queries for better results
-    if len(query.split()) <= 3:
-        expanded_query = f"{query} definition meaning explanation overview details"
-    else:
-        expanded_query = query
+    # Use pure query for better technical matching
+    expanded_query = query.strip()
+    print(f"[AGENT] Searching for: '{expanded_query}'")
 
 
     # Get search results with metadata
+    print(f"[AGENT] Querying library for {current_user}...")
     results = rag.db.search(expanded_query, n_results=8, use_reranking=True, user_id=current_user)
     
-    
+    # 3. Handle results
+    doc_count = len(results.get("documents", []))
+    print(f"[AGENT] Search finished. Found {doc_count} chunks.")
     # Check if we got any results
     if not results["documents"]:
         return "No relevant information found in the documents. You may try web_search for current information."

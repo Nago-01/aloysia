@@ -152,6 +152,13 @@ class VectorDB:
             # 2. Call the 'match_documents' RPC function directly
             print(f"DEBUG: Searching Supabase for '{query[:30]}...' (user_id: {user_id})")
             
+            # DIAGNOSTIC: Check if user has ANY documents first
+            try:
+                count_resp = self.client.from_(self.table_name).select("id", count="exact").eq("metadata->>user_id", user_id).limit(1).execute()
+                total_chunks = count_resp.count if hasattr(count_resp, 'count') else 0
+                print(f"📊 [LIBRARY_STAT] User {user_id} has {total_chunks} total chunks indexed.")
+            except Exception:
+                pass
 
             print(f"DEBUG: Executing RPC match_documents with filter: {{'user_id': '{user_id}'}} (Type: {type(user_id)})")
             
@@ -165,11 +172,14 @@ class VectorDB:
                 }
             ).execute()
 
-            if not response.data or len(response.data) == 0:
-                print(f"DEBUG: Supabase query returned 0 rows for user_id={user_id}")
+            if hasattr(response, 'error') and response.error:
+                print(f"❌ Supabase RPC Error: {response.error}")
+
+            if not response.data:
+                print(f"🔍 [SEARCH] 0 chunks found for user_id: {user_id}")
                 return {"documents": [], "metadatas": [], "distances": [], "ids": [], "citations": []}
             
-            print(f"DEBUG: Successfully retrieved {len(response.data)} chunks from cloud.")
+            print(f"✅ [SEARCH] {len(response.data)} chunks found for user_id: {user_id}")
             
             # Unpack results
             documents = [row["content"] for row in response.data]
@@ -231,8 +241,8 @@ class VectorDB:
                 scores = [rerank_scores[i] for i in sorted_indices]
             else:
                 # FALLBACK: CrossEncoder unavailable - use similarity threshold filtering
-                # Filter out low-quality results (cosine sim < 0.3) and take top n_results
-                MIN_SIMILARITY = 0.3
+                # Filter out low-quality results (cosine sim < 0.15) and take top n_results
+                MIN_SIMILARITY = 0.15
                 filtered = [(d, m, s) for d, m, s in zip(documents, metadatas, scores) if s >= MIN_SIMILARITY]
                 
                 if filtered:
@@ -243,7 +253,7 @@ class VectorDB:
                     documents = documents[:n_results]
                     metadatas = metadatas[:n_results]
                     scores = scores[:n_results]
-                    print(f"Warning: All results below similarity threshold. Using top {n_results} anyway.")
+                    print(f"Warning: All {len(documents)} results below similarity threshold ({MIN_SIMILARITY}).")
 
             return {
                 "documents": documents,

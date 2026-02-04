@@ -364,8 +364,10 @@ def main():
     # NOTE: When running in a thread (via gateway_runner.py), 
     # we MUST disable signal handling (stop_signals=None) 
     # and not close the loop in this thread if handled elsewhere.
+    # We set drop_pending_updates=True to clear any legacy webhook/conflict state on start.
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
         stop_signals=None,
         close_loop=False
     )

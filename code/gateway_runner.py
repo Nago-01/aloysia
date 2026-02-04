@@ -11,6 +11,26 @@ if project_root not in sys.path:
 
 class RedirectHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/status":
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            
+            # Check thread status
+            is_alive = any(t.name == "BotThread" and t.is_alive() for t in threading.enumerate())
+            status_color = "green" if is_alive else "red"
+            status_text = "RUNNING" if is_alive else "CRASHED/STOPPED"
+            
+            html = f"""
+            <html><body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
+                <h1>Aloysia System Status</h1>
+                <p>Bot Thread: <b style="color: {status_color};">{status_text}</b></p>
+                <p><a href="/">Back to Bot</a></p>
+            </body></html>
+            """
+            self.wfile.write(html.encode())
+            return
+
         # Redirect all traffic to the Telegram bot
         self.send_response(301)
         self.send_header('Location', 'https://t.me/Aloysia_telegram_bot')
@@ -66,7 +86,7 @@ if __name__ == "__main__":
     import signal
     
     # 1. Start Telegram Bot in a background thread
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True, name="BotThread")
     bot_thread.start()
     
     # 2. Start Redirect Gateway in the main thread

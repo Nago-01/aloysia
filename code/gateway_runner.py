@@ -10,6 +10,17 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 class RedirectHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        """Handle HEAD requests for Render health checks."""
+        if self.path == "/status":
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+        else:
+            self.send_response(301)
+            self.send_header('Location', 'https://t.me/Aloysia_telegram_bot')
+            self.end_headers()
+
     def do_GET(self):
         if self.path == "/status":
             self.send_response(200)

@@ -168,25 +168,12 @@ class AloysiaBot:
             from code.app import extract_text_with_page_numbers
             chunks_data = extract_text_with_page_numbers(file_path, file_ext)
             
-            # Format for VectorDB
-            from langchain_core.documents import Document
-            
+            # Format for VectorDB (Passing raw dicts is more memory-efficient than Document objects)
             user_id = self._resolve_user_id(chat_id)
             
-            docs = []
-            for chunk in chunks_data:
-                docs.append(Document(
-                    page_content=chunk["content"],
-                    metadata={
-                        "source": document.file_name,
-                        "page": chunk["page_number"],
-                        "user_id": user_id, # RLS Isolation (Linked or chat_id)
-                    }
-                ))
-            
             # Add to DB
-            if docs:
-                self.db.add_doc(docs, user_id=user_id)
+            if chunks_data:
+                self.db.add_doc(chunks_data, user_id=user_id)
                 msg = f"<b>{document.file_name}</b> added to your library!\n\nYou can now ask questions about it."
             else:
                 msg = f"Could not extract text from <b>{document.file_name}</b>."

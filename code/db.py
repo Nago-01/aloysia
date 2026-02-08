@@ -74,8 +74,14 @@ class VectorDB:
         """
         Add documents to Supabase with metadata.
         """
-        all_chunks = []
-        all_metadatas = []
+    def add_doc(self, documents: List, user_id: str = "default_user") -> None:
+        """Add documents to cloud vector store with memory-efficient batching."""
+        batch_size = 50
+        current_batch_texts = []
+        current_batch_metas = []
+        total_chunks = 0
+
+        print(f"🔄 Processing {len(documents)} documents for user {user_id}...")
 
         for doc in documents:
             if isinstance(doc, dict):
@@ -86,37 +92,37 @@ class VectorDB:
                 text = getattr(doc, "page_content", "")
                 metadata = getattr(doc, "metadata", {}).copy()
             
-            # Security: Add user_id to metadata for filtering
             metadata["user_id"] = user_id
-
-            if len(text) < 1000:
-                chunks = [text]
-            else:
-                chunks = self.chunk_text(text)
-
+            
+            # Split each document into smaller pieces
+            chunks = self.chunk_text(text)
+            
             for chunk in chunks:
-                all_chunks.append(chunk)
-                all_metadatas.append(metadata)
+                # Sanitize and add to current batch
+                clean_chunk = chunk.replace("\u0000", "") 
+                current_batch_texts.append(clean_chunk)
+                current_batch_metas.append(metadata)
+                total_chunks += 1
 
-        # Store in Supabase with BATCHING to prevent RAM spikes
-        batch_size = 50
-        if all_chunks:
-            print(f"Uploading {len(all_chunks)} chunks to Supabase in batches of {batch_size}...")
-            
-            # SANITIZATION: PostgreSQL cannot store \u0000 (null characters)
-            sanitized_chunks = [chunk.replace("\u0000", "") for chunk in all_chunks]
-            
-            for i in range(0, len(sanitized_chunks), batch_size):
-                batch_chunks = sanitized_chunks[i:i + batch_size]
-                batch_metas = all_metadatas[i:i + batch_size]
-                
-                print(f"   -> Processing batch {i//batch_size + 1}...")
-                self.vector_store.add_texts(
-                    texts=batch_chunks,
-                    metadatas=batch_metas
-                )
+                # 3. If batch is full, upload immediately to free RAM
+                if len(current_batch_texts) >= batch_size:
+                    print(f"Uploading batch - Total chunks processed: {total_chunks}...")
+                    self.vector_store.add_texts(
+                        texts=current_batch_texts,
+                        metadatas=current_batch_metas
+                    )
+                    current_batch_texts = []
+                    current_batch_metas = []
         
-        print(f"Synchronization complete: {len(documents)} source docs added/split.")
+        # 4. Final upload for remaining chunks
+        if current_batch_texts:
+            print(f"Uploading final batch of {len(current_batch_texts)} chunks...")
+            self.vector_store.add_texts(
+                texts=current_batch_texts,
+                metadatas=current_batch_metas
+            )
+        
+        print(f"Synchronization complete: {total_chunks} total chunks added.")
 
 
 

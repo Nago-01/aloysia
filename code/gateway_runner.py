@@ -12,7 +12,7 @@ if project_root not in sys.path:
 class RedirectHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         """Handle HEAD requests for Render health checks."""
-        if self.path == "/status":
+        if self.path in ("/", "/status"):
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
@@ -22,7 +22,7 @@ class RedirectHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_GET(self):
-        if self.path == "/status":
+        if self.path in ("/", "/status"):
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()

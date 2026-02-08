@@ -39,14 +39,12 @@ class VectorDB:
             asyncio.set_event_loop(asyncio.new_event_loop())
 
         self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004",
+            model="models/embedding-001",
             google_api_key=os.getenv("GEMINI_API_KEY")
         )
 
-        # Initialize cross-encoder for re-ranking (Keep local for quality)
-        # DISABLE ON RENDER FREE TIER to prevent OOM (512MB limit)
         if os.getenv("DISABLE_RERANKER", "false").lower() == "true":
-            print("Reranker is DISABLED via Env Var (Saving RAM)")
+            print("Reranker is DISABLED via Env Var")
             self.reranker = None
         else:
             try:

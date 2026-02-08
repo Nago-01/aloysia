@@ -10,9 +10,8 @@ langchain_experimental
 langchain-community
 
 # Vector database & embeddings
-sentence-transformers
-huggingface_hub
-langchain-huggingface
+fastembed
+langchain-community
 
 # Document parsing
 PyPDF2>=3.0.0

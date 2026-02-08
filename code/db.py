@@ -1,12 +1,12 @@
 import os, traceback
 from typing import List, Dict, Any
 from supabase.client import create_client, Client
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_experimental.text_splitter import SemanticChunker
 class VectorDB:
     """
-    Cloud-ready Vector database using Supabase and Local HuggingFace Embeddings.
+    Cloud-ready Vector database using Supabase and Ultra-Light FastEmbed.
     """
     def __init__(self, collection_name: str = None, embedding_model: str = None):
         """
@@ -28,11 +28,11 @@ class VectorDB:
         # Initialize Supabase client
         self.client: Client = create_client(self.supabase_url, self.supabase_key)
 
-        # Use Local HuggingFace Embeddings (Reliable, no API costs/404s)
-        print("Initializing Local HuggingFace Embeddings...")
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            cache_folder="/tmp/huggingface_cache"
+        # Use FastEmbed (Zero-Torching, Ultra-Lightweight for Render Free Tier)
+        print("Initializing FastEmbed...")
+        self.embeddings = FastEmbedEmbeddings(
+            model_name="BAAI/bge-small-en-v1.5",
+            cache_dir="/tmp/fastembed_cache"
         )
 
         if os.getenv("DISABLE_RERANKER", "false").lower() == "true":

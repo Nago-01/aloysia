@@ -1,7 +1,7 @@
 import os, traceback
 from typing import List, Dict, Any
 from supabase.client import create_client, Client
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_experimental.text_splitter import SemanticChunker
 class VectorDB:

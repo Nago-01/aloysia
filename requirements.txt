@@ -12,8 +12,7 @@ langchain-community
 # Vector database & embeddings
 sentence-transformers
 huggingface_hub
-sentence-transformers
-huggingface_hub
+langchain-huggingface
 
 # Document parsing
 PyPDF2>=3.0.0

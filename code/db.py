@@ -1,9 +1,10 @@
 import os, traceback
+os.environ["ORT_LOGGING_LEVEL"] = "3" # Suppress ORT GPU discovery noise
 from typing import List, Dict, Any
 from supabase.client import create_client, Client
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
-from langchain_experimental.text_splitter import SemanticChunker
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 class VectorDB:
     """
     Cloud-ready Vector database using Supabase and Ultra-Light FastEmbed.
@@ -59,19 +60,14 @@ class VectorDB:
 
 
 
-    def chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
-        """Chunk text using Semantic Chunking based on Gemini embeddings."""
-        
-        text_splitter = SemanticChunker(
-            self.embeddings, 
-            breakpoint_threshold_type="percentile"
+    def chunk_text(self, text: str, chunk_size: int = 600) -> List[str]:
+        """Chunk text using Recursive Character Splitting (RAM-optimized)."""
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=50,
+            separators=["\n\n", "\n", ".", " ", ""]
         )
-        try:
-            chunks = text_splitter.split_text(text)
-            return chunks
-        except Exception as e:
-            print(f"Error in semantic chunking: {e}. Fallback to simple split.")
-            return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+        return text_splitter.split_text(text)
     
     
     def add_doc(self, documents: List, user_id: str = "default_user") -> None:
@@ -102,19 +98,25 @@ class VectorDB:
                 all_chunks.append(chunk)
                 all_metadatas.append(metadata)
 
-        # Store in Supabase
+        # Store in Supabase with BATCHING to prevent RAM spikes
+        batch_size = 50
         if all_chunks:
-            print(f"Uploading {len(all_chunks)} chunks to Supabase...")
+            print(f"Uploading {len(all_chunks)} chunks to Supabase in batches of {batch_size}...")
             
             # SANITIZATION: PostgreSQL cannot store \u0000 (null characters)
             sanitized_chunks = [chunk.replace("\u0000", "") for chunk in all_chunks]
             
-            self.vector_store.add_texts(
-                texts=sanitized_chunks,
-                metadatas=all_metadatas
-            )
+            for i in range(0, len(sanitized_chunks), batch_size):
+                batch_chunks = sanitized_chunks[i:i + batch_size]
+                batch_metas = all_metadatas[i:i + batch_size]
+                
+                print(f"   -> Processing batch {i//batch_size + 1}...")
+                self.vector_store.add_texts(
+                    texts=batch_chunks,
+                    metadatas=batch_metas
+                )
         
-        print(f"Synchronization complete: {len(documents)} docs added to cloud.")
+        print(f"Synchronization complete: {len(documents)} source docs added/split.")
 
 
 

@@ -1,12 +1,12 @@
 import os, traceback
 from typing import List, Dict, Any
 from supabase.client import create_client, Client
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_experimental.text_splitter import SemanticChunker
 class VectorDB:
     """
-    Cloud-ready Vector database using Supabase and Gemini Embeddings.
+    Cloud-ready Vector database using Supabase and Local HuggingFace Embeddings.
     """
     def __init__(self, collection_name: str = None, embedding_model: str = None):
         """
@@ -28,19 +28,11 @@ class VectorDB:
         # Initialize Supabase client
         self.client: Client = create_client(self.supabase_url, self.supabase_key)
 
-        # Offload embeddings to Gemini API (Faster, lightweight)
-        print("Initializing Gemini Embeddings API...")
-        
-        # FIX: Ensure an asyncio event loop exists for Google's async gRPC client
-        import asyncio
-        try:
-            asyncio.get_event_loop()
-        except RuntimeError:
-            asyncio.set_event_loop(asyncio.new_event_loop())
-
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001",
-            google_api_key=os.getenv("GEMINI_API_KEY")
+        # Use Local HuggingFace Embeddings (Reliable, no API costs/404s)
+        print("Initializing Local HuggingFace Embeddings...")
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            cache_folder="/tmp/huggingface_cache"
         )
 
         if os.getenv("DISABLE_RERANKER", "false").lower() == "true":

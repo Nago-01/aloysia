@@ -3,12 +3,17 @@ streamlit
 langchain-core>=0.2.0
 langchain-text-splitters>=0.2.0
 langchain-groq>=0.1.0
-langchain-google-genai>=0.1.0
+langchain-google-genai>=2.0.0
 langgraph
 tavily-python
 langchain_experimental
+langchain-community
 
 # Vector database & embeddings
+sentence-transformers
+huggingface_hub
+sentence-transformers
+huggingface_hub
 
 # Document parsing
 PyPDF2>=3.0.0

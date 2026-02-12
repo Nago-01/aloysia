@@ -74,7 +74,7 @@ class VectorDB:
         current_batch_metas = []
         total_chunks = 0
 
-        print(f"Processing {len(documents)} documents for user {user_id}...")
+        print(f"Processing {len(documents)} documents for user {user_id}...", flush=True)
 
         for doc in documents:
             if isinstance(doc, dict):
@@ -111,7 +111,7 @@ class VectorDB:
 
                 # If batch is full, upload immediately to free RAM
                 if len(current_batch_texts) >= batch_size:
-                    print(f"  Uploading batch ({total_chunks} chunks so far)...")
+                    print(f"  Uploading batch ({total_chunks} chunks so far)...", flush=True)
                     self.vector_store.add_texts(
                         texts=current_batch_texts,
                         metadatas=current_batch_metas
@@ -121,13 +121,13 @@ class VectorDB:
         
         # Final upload for remaining chunks
         if current_batch_texts:
-            print(f"  Uploading final batch of {len(current_batch_texts)} chunks...")
+            print(f"  Uploading final batch of {len(current_batch_texts)} chunks...", flush=True)
             self.vector_store.add_texts(
                 texts=current_batch_texts,
                 metadatas=current_batch_metas
             )
         
-        print(f"Synchronization complete: {total_chunks} total chunks added.")
+        print(f"Synchronization complete: {total_chunks} total chunks added.", flush=True)
 
 
 

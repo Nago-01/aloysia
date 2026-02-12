@@ -177,16 +177,13 @@ class AloysiaBot:
             # Add to DB (run in thread to avoid blocking the event loop)
             if chunks_data:
                 await context.bot.edit_message_text(
-                    f"Uploading <b>{document.file_name}</b> ({len(chunks_data)} sections)...\n<i>This may take 1-2 minutes.</i>",
+                    f"Uploading <b>{document.file_name}</b> ({len(chunks_data)} sections)...\n<i>This may take 1-3 minutes.</i>",
                     chat_id=chat_id,
                     message_id=status_msg.message_id,
                     parse_mode="HTML"
                 )
                 
-                await asyncio.wait_for(
-                    asyncio.to_thread(self.db.add_doc, chunks_data, user_id),
-                    timeout=300.0  # 5 min timeout for large documents
-                )
+                await asyncio.to_thread(self.db.add_doc, chunks_data, user_id)
                 msg = f"<b>{document.file_name}</b> added to your library!\n\nYou can now ask questions about it."
             else:
                 msg = f"Could not extract text from <b>{document.file_name}</b>."

@@ -5,6 +5,7 @@ from supabase.client import create_client, Client
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 class VectorDB:
     """
     Cloud-ready Vector database using Supabase and Ultra-Light FastEmbed.
@@ -29,25 +30,15 @@ class VectorDB:
         # Initialize Supabase client
         self.client: Client = create_client(self.supabase_url, self.supabase_key)
 
-        # Use FastEmbed (Zero-Torching, Ultra-Lightweight for Render Free Tier)
+        # Use FastEmbed (Zero-Torch, Ultra-Lightweight for Render Free Tier)
         print("Initializing FastEmbed...")
         self.embeddings = FastEmbedEmbeddings(
             model_name="BAAI/bge-small-en-v1.5",
             cache_dir="/tmp/fastembed_cache"
         )
 
-        if os.getenv("DISABLE_RERANKER", "false").lower() == "true":
-            print("Reranker is DISABLED via Env Var")
-            self.reranker = None
-        else:
-            try:
-                print("Checking for Cross-Encoder libraries...")
-                from sentence_transformers import CrossEncoder
-                print("Initializing local Cross-Encoder...")
-                self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-            except Exception as e:
-                print(f"Warning: Cross-Encoder skipped or failed ({e}). Falling back to standard cosine similarity.")
-                self.reranker = None
+        # Reranker disabled — sentence-transformers removed for RAM optimization
+        self.reranker = None
         
         # Initialize Vector Store
         self.vector_store = SupabaseVectorStore(
@@ -72,41 +63,55 @@ class VectorDB:
     
     def add_doc(self, documents: List, user_id: str = "default_user") -> None:
         """
-        Add documents to Supabase with metadata.
+        Add documents to cloud vector store with memory-efficient batching.
+        
+        Accepts both:
+          - Raw dicts from extract_text_with_page_numbers: {"content": ..., "page_number": ..., "section": ...}
+          - LangChain Document objects with page_content and metadata attrs
         """
-    def add_doc(self, documents: List, user_id: str = "default_user") -> None:
-        """Add documents to cloud vector store with memory-efficient batching."""
-        batch_size = 50
+        batch_size = 10  # Small batches to stay under 512MB RAM on Render
         current_batch_texts = []
         current_batch_metas = []
         total_chunks = 0
 
-        print(f"🔄 Processing {len(documents)} documents for user {user_id}...")
+        print(f"Processing {len(documents)} documents for user {user_id}...")
 
         for doc in documents:
             if isinstance(doc, dict):
                 text = doc.get("content", "")
-                metadata = doc.get("metadata", {}).copy()
+                # Build metadata from the dict's own fields
+                metadata = {
+                    "source": doc.get("source", doc.get("metadata", {}).get("source", "uploaded_file")),
+                    "page": doc.get("page_number", doc.get("page", 1)),
+                    "section": doc.get("section", ""),
+                }
+                # Merge any existing nested metadata
+                if "metadata" in doc:
+                    metadata.update(doc["metadata"])
             else:
                 # Handle LangChain Document objects
                 text = getattr(doc, "page_content", "")
                 metadata = getattr(doc, "metadata", {}).copy()
             
+            # Always stamp user_id for RLS isolation
             metadata["user_id"] = user_id
+            
+            if not text or not text.strip():
+                continue
             
             # Split each document into smaller pieces
             chunks = self.chunk_text(text)
             
             for chunk in chunks:
-                # Sanitize and add to current batch
+                # Sanitize: PostgreSQL cannot store \u0000
                 clean_chunk = chunk.replace("\u0000", "") 
                 current_batch_texts.append(clean_chunk)
-                current_batch_metas.append(metadata)
+                current_batch_metas.append(metadata.copy())
                 total_chunks += 1
 
-                # 3. If batch is full, upload immediately to free RAM
+                # If batch is full, upload immediately to free RAM
                 if len(current_batch_texts) >= batch_size:
-                    print(f"Uploading batch - Total chunks processed: {total_chunks}...")
+                    print(f"  Uploading batch ({total_chunks} chunks so far)...")
                     self.vector_store.add_texts(
                         texts=current_batch_texts,
                         metadatas=current_batch_metas
@@ -114,9 +119,9 @@ class VectorDB:
                     current_batch_texts = []
                     current_batch_metas = []
         
-        # 4. Final upload for remaining chunks
+        # Final upload for remaining chunks
         if current_batch_texts:
-            print(f"Uploading final batch of {len(current_batch_texts)} chunks...")
+            print(f"  Uploading final batch of {len(current_batch_texts)} chunks...")
             self.vector_store.add_texts(
                 texts=current_batch_texts,
                 metadatas=current_batch_metas
@@ -154,7 +159,7 @@ class VectorDB:
             try:
                 count_resp = self.client.from_(self.table_name).select("id", count="exact").eq("metadata->>user_id", user_id).limit(1).execute()
                 total_chunks = count_resp.count if hasattr(count_resp, 'count') else 0
-                print(f"📊 [LIBRARY_STAT] User {user_id} has {total_chunks} total chunks indexed.")
+                print(f"[LIBRARY_STAT] User {user_id} has {total_chunks} total chunks indexed.")
             except Exception:
                 pass
 
@@ -177,7 +182,7 @@ class VectorDB:
                 print(f"🔍 [SEARCH] 0 chunks found for user_id: {user_id}")
                 return {"documents": [], "metadatas": [], "distances": [], "ids": [], "citations": []}
             
-            print(f"✅ [SEARCH] {len(response.data)} chunks found for user_id: {user_id}")
+            print(f"[SEARCH] {len(response.data)} chunks found for user_id: {user_id}")
             
             # Unpack results
             documents = [row["content"] for row in response.data]
@@ -289,7 +294,7 @@ class VectorDB:
 
     def _format_citation(self, metadata: Dict[str, Any]) -> str:
         source = metadata.get("source", "Unknown Source")
-        page = metadata.get("page_number", "N/A")
+        page = metadata.get("page_number", metadata.get("page", "N/A"))
         author = metadata.get("author", "Unknown Author")
         title = metadata.get("title", "Untitled")
         section = metadata.get("section", "")

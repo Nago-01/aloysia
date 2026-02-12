@@ -168,7 +168,10 @@ class AloysiaBot:
             from code.app import extract_text_with_page_numbers
             chunks_data = extract_text_with_page_numbers(file_path, file_ext)
             
-            # Format for VectorDB (Passing raw dicts is more memory-efficient than Document objects)
+            # Adding source filename for citations in each chunk
+            for chunk in chunks_data:
+                chunk["source"] = document.file_name
+            
             user_id = self._resolve_user_id(chat_id)
             
             # Add to DB

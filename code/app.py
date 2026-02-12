@@ -143,12 +143,13 @@ def extract_text_with_page_numbers(file_path: Path, ext: str) -> List[Dict[str, 
                     "page_number": i,
                     "section": "Full Documentation"
                 })
-            else:
-                chunks.append({
-                    "content": text.strip(),
-                    "page_number": 1,
-                    "section": "Full Documentation"
-                })
+        else:
+            chunks.append({
+                "content": text.strip(),
+                "page_number": 1,
+                "section": "Full Documentation"
+            })
+
 
 
     return chunks

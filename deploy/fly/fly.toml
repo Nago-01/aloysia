@@ -19,6 +19,7 @@ kill_timeout = "5s"
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
+  processes = ["app"]
 
   [[services.http_checks]]
     interval = "60s"

@@ -61,7 +61,7 @@ class AloysiaBot:
             f"<b>Quick Start:</b>\n"
             f"1. <b>Upload a paper</b> - I'll read and index it for your personal library.\n"
             f"2. <b>Ask a question</b> - I'll search your papers and provide cited answers.\n"
-            f"3. <b>Search for papers on ArXiv<b> - I'll fetch ArXiv papers based on your topic of interest.\n"
+            f"3. <b>Search for papers on ArXiv</b> - I'll fetch ArXiv papers based on your topic of interest.\n"
             f"4. <b>Sync Accounts</b> - Use <code>/link your@email.com</code> to sync your knowledge base with the Aloysia Web Portal.\n\n"
             f"📚 Use /library to see your papers.\n"
             f"❓ Use /help for all commands."

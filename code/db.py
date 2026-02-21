@@ -30,14 +30,13 @@ class VectorDB:
         # Initialize Supabase client
         self.client: Client = create_client(self.supabase_url, self.supabase_key)
 
-        # Use FastEmbed (Zero-Torch, Ultra-Lightweight for Render Free Tier)
+        # Use FastEmbed 
         print("Initializing FastEmbed...")
         self.embeddings = FastEmbedEmbeddings(
             model_name="BAAI/bge-small-en-v1.5",
             cache_dir="/tmp/fastembed_cache"
         )
 
-        # Reranker disabled — sentence-transformers removed for RAM optimization
         self.reranker = None
         
         # Initialize Vector Store
@@ -69,7 +68,7 @@ class VectorDB:
           - Raw dicts from extract_text_with_page_numbers: {"content": ..., "page_number": ..., "section": ...}
           - LangChain Document objects with page_content and metadata attrs
         """
-        batch_size = 10  # Small batches to stay under 512MB RAM on Render
+        batch_size = 10  
         current_batch_texts = []
         current_batch_metas = []
         total_chunks = 0
@@ -103,13 +102,11 @@ class VectorDB:
             chunks = self.chunk_text(text)
             
             for chunk in chunks:
-                # Sanitize: PostgreSQL cannot store \u0000
                 clean_chunk = chunk.replace("\u0000", "") 
                 current_batch_texts.append(clean_chunk)
                 current_batch_metas.append(metadata.copy())
                 total_chunks += 1
 
-                # If batch is full, upload immediately to free RAM
                 if len(current_batch_texts) >= batch_size:
                     print(f"  Uploading batch ({total_chunks} chunks so far)...", flush=True)
                     self.vector_store.add_texts(
@@ -136,7 +133,7 @@ class VectorDB:
         Search cloud DB with direct RPC call to bypass buggy SDK.
         """
         try:
-            # 1. Generate embedding for the query (with retry logic)
+            # Generate embedding for the query (with retry logic)
             query_embedding = None
             for attempt in range(3):
                 try:
@@ -152,10 +149,10 @@ class VectorDB:
                         print(f"Embedding API Error: {emb_e}. Skipping RAG search.")
                         return {"documents": [], "metadatas": [], "distances": [], "ids": [], "citations": []}
 
-            # 2. Call the 'match_documents' RPC function directly
+            # Call the 'match_documents' RPC function directly
             print(f"DEBUG: Searching Supabase for '{query[:30]}...' (user_id: {user_id})")
             
-            # DIAGNOSTIC: Check if user has ANY documents first
+            # Check if user has ANY documents first
             try:
                 count_resp = self.client.from_(self.table_name).select("id", count="exact").eq("metadata->>user_id", user_id).limit(1).execute()
                 total_chunks = count_resp.count if hasattr(count_resp, 'count') else 0
@@ -189,7 +186,7 @@ class VectorDB:
             metadatas = [row["metadata"] for row in response.data]
             scores = [row["similarity"] for row in response.data]
 
-            # FILTER: Skip bibliography/references chunks (low-value for Q&A)
+            # Skip bibliography/references chunks 
             # Patterns that indicate reference/bibliography sections
             REFERENCE_PATTERNS = [
                 r'^\d+\.\s+[A-Z][a-z]+\s+[A-Z]{1,2},',  # "1. Smith J, ..."
@@ -209,7 +206,7 @@ class VectorDB:
                 for pattern in REFERENCE_PATTERNS:
                     if re.search(pattern, sample, re.IGNORECASE | re.MULTILINE):
                         return True
-                # Also check if most lines look like citations (short with years)
+                
                 lines = content.split('\n')[:5]
                 citation_like = sum(1 for l in lines if re.search(r'\(\d{4}\)', l) or re.search(r'\d{4};\d+', l))
                 return citation_like >= 3
@@ -243,7 +240,7 @@ class VectorDB:
                 metadatas = [metadatas[i] for i in sorted_indices]
                 scores = [rerank_scores[i] for i in sorted_indices]
             else:
-                # FALLBACK: CrossEncoder unavailable - use similarity threshold filtering
+                
                 # Filter out low-quality results (cosine sim < 0.15) and take top n_results
                 MIN_SIMILARITY = 0.15
                 filtered = [(d, m, s) for d, m, s in zip(documents, metadatas, scores) if s >= MIN_SIMILARITY]
@@ -277,8 +274,7 @@ class VectorDB:
         Used for generating bibliography.
         """
         try:
-            # Note: For large DBs, we'd want to use distinct on metadata->>source
-            # But for Beta, we just grab all and filter in Python
+            
             response = self.client.from_(self.table_name).select("metadata").eq("metadata->>user_id", user_id).execute()
             
             if not response.data:

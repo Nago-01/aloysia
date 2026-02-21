@@ -3,7 +3,7 @@
 import os, sys
 from pathlib import Path
 
-# Global singleton cache for Bot/Script usage
+
 _rag_cache = {"instance": None}
 
 
@@ -12,7 +12,7 @@ _rag_cache = {"instance": None}
 def initialize_rag():
     """Initialize RAG assistant - Supports both Streamlit and Bot execution"""
 
-    # 1. Check Streamlit Session State (if running in Streamlit)
+    # Check Streamlit Session State
     try:
         if "streamlit" in sys.modules:
             import streamlit as st
@@ -23,7 +23,7 @@ def initialize_rag():
     except (ImportError, AttributeError, RuntimeError):
         pass
 
-    # 2. Check Global Cache (for Bot/Script)
+    # Check Global Cache
     if _rag_cache["instance"] is not None:
         print(f"\nUsing cached RAG from global memory")
         return _rag_cache["instance"]
@@ -35,9 +35,6 @@ def initialize_rag():
     assistant = QAAssistant()
     print("QA Assistant created")
 
-    # OPTIONAL SEEDING: 
-    # Only load from ./data if explicitly requested via environment variable.
-    # In production (Render), we already have the data in Supabase, so we skip this.
     if os.getenv("SEED_DATA", "false").lower() == "true":
         print("SEED_DATA=true: Loading initial documents from disk...")
         possible_paths = [
@@ -101,7 +98,7 @@ def get_rag():
     if _rag_cache["instance"] is not None:
         return _rag_cache["instance"]
 
-    # Not found -> Init
+   
     print("RAG not found in cache, initializing...")
     return initialize_rag()
 

@@ -58,7 +58,7 @@ def manage_context_window(messages: list) -> list:
     if not messages:
         return []
     
-    # Helper to check if msg is from current turn (simplified logic)
+    # Helper to check if msg is from current turn 
     # We assume the last message in the list is the most recent
     
     # Slice to window size first
@@ -92,8 +92,6 @@ def manage_context_window(messages: list) -> list:
         if not any(isinstance(m, SystemMessage) for m in processed):
              processed.insert(0, sys_msgs[0])
     
-    # SANITIZATION: Ensure we don't start with a ToolMessage (orphaned)
-    # Most APIs require: User -> AI -> Tool -> AI
     # If the first non-System message is a ToolMessage, drop it (and likely its chunks)
     while processed and isinstance(processed[0], (ToolMessage, SystemMessage)):
         if isinstance(processed[0], SystemMessage):
@@ -105,8 +103,7 @@ def manage_context_window(messages: list) -> list:
         else:
             processed.pop(0)
             
-    # FINAL SANITIZATION: Strict Role Alternation (LangGraph/Groq compatible)
-    # Sequence must be: [System] -> Human -> AI -> Tool -> AI -> Human ...
+    
     final_sanitized = []
     
     # Track the last non-system role to enforce alternation
@@ -114,7 +111,7 @@ def manage_context_window(messages: list) -> list:
     last_role = None
     
     for msg in processed:
-        # 1. Identify Role
+        # Identify Role
         if isinstance(msg, SystemMessage):
             role = "system"
         elif isinstance(msg, HumanMessage):
@@ -139,16 +136,13 @@ def manage_context_window(messages: list) -> list:
                 last_role = "human"
             continue
             
-        # 3. Handle Alternation Violations
+        # Handle Alternation Violations
         if role == last_role:
             if role == "human":
-                # Consecutive Humans: Merge them or keep latest
                 final_sanitized.pop()
             elif role == "ai":
-                # Consecutive AI: Keep latest (likely a newer plan or tool call)
                 final_sanitized.pop()
             elif role == "tool":
-                # Consecutive Tools: This is common (multiple tools called in one turn)
                 # We ALLOW consecutive ToolMessages IF they have different IDs
                 pass
             
@@ -157,19 +151,18 @@ def manage_context_window(messages: list) -> list:
             prev_msg = final_sanitized[-1]
             if not (isinstance(prev_msg, AIMessage) and prev_msg.tool_calls):
                 # Orphaned tool message! This triggers 400 error. 
-                # We must drop it if we don't have the call.
+                # drop it if there's no call.
                 continue
         
         final_sanitized.append(msg)
         last_role = role
     
-    # FINAL STRUCTURAL LOGGING
     seq = [m.__class__.__name__ for m in final_sanitized]
     print(f"--- Sanitized Sequence: {' -> '.join(seq)} ---")
     
     return final_sanitized
     
-    # FINAL STRUCTURAL LOGGING: Help debug 400 Errors
+    # Help debug 400 Errors
     seq = [m.__class__.__name__ for m in final_sanitized]
     print(f"--- Sanitized Sequence: {' -> '.join(seq)} ---")
     
@@ -246,7 +239,6 @@ def rag_search(query: str) -> str:
     print(f"[AGENT] Querying library for {current_user}...")
     results = rag.db.search(expanded_query, n_results=8, use_reranking=True, user_id=current_user)
     
-    # 3. Handle results
     doc_count = len(results.get("documents", []))
     print(f"[AGENT] Search finished. Found {doc_count} chunks.")
     # Check if we got any results
@@ -261,7 +253,7 @@ def rag_search(query: str) -> str:
         results["citations"][:5], 
         results["distances"][:5]
     ), 1):
-        # SANITIZATION: Remove non-printable characters to prevent API errors
+        # Remove non-printable characters to prevent API errors
         clean_doc = "".join(char for char in doc if char.isprintable() or char in ['\n', '\t'])
         
         formatted_results.append(
@@ -700,7 +692,7 @@ def web_search(query: str) -> str:
                     formatted.append(f"{i}. {str(result)}")
             return "\n\n".join(formatted) if formatted else "No results found."
         elif isinstance(results, dict):
-            # if it's a single dictionary
+            # if it is a single dictionary
             content = results.get("content", results.get("snippet", ""))
             url = results.get("url", "")
             return f"{content}\nSource: {url}"
@@ -873,7 +865,7 @@ def tools_node(state: AgentState):
 
 
 
-# Provider registry - order determines priority
+# Provider registry 
 PROVIDER_REGISTRY = []
 _current_provider_index = 0
 
@@ -882,7 +874,7 @@ def _build_provider_registry():
     global PROVIDER_REGISTRY
     PROVIDER_REGISTRY = []
     
-    # Priority 1: Groq (Llama 3) - Testing Stability
+    # Groq (Llama 3) - Testing Stability
     if os.getenv("GROQ_API_KEY"):
         PROVIDER_REGISTRY.append({
             "name": "groq",
@@ -894,7 +886,7 @@ def _build_provider_registry():
             )
         })
 
-    # Priority 2: Gemini (Flash) - Fallback
+    # Gemini (Flash) - Fallback
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
         PROVIDER_REGISTRY.append({
             "name": "gemini",
@@ -907,7 +899,6 @@ def _build_provider_registry():
         })
     
     # Future providers can be added here (OpenAI, Anthropic, etc.)
-    
     if not PROVIDER_REGISTRY:
         raise ValueError(
             "No valid API key found. "
@@ -953,7 +944,7 @@ def recover_tool_calls(message: AIMessage) -> AIMessage:
     import json, re
     content = message.content.strip()
     
-    # 1. Strategy A: Direct/Pure JSON (The whole message is a JSON object)
+    #Direct/Pure JSON (The whole message is a JSON object)
     if content.startswith("{") and content.endswith("}"):
         try:
             data = json.loads(content)
@@ -969,7 +960,6 @@ def recover_tool_calls(message: AIMessage) -> AIMessage:
         except:
             pass
 
-    # 2. Strategy B: XML format (Groq/Llama-3 special leak)
     # Format variations: <function=name {"arg": "val"}> </function> OR <function=name {"arg": "val"} </function>
     # The regex must handle optional closing bracket and </function> tag
     xml_match = re.search(r'<function=([a-zA-Z0-9_-]+)\s*(\{.*?\})\s*>?\s*(?:</function>)?', content, re.DOTALL)
@@ -990,7 +980,6 @@ def recover_tool_calls(message: AIMessage) -> AIMessage:
             print(f"XML recovery parse error: {parse_err}")
             pass
 
-    # 3. Strategy C: Markdown JSON (JSON inside ```json ... ``` blocks)
     # Using regex to find all JSON-like blocks
     json_blocks = re.findall(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
     
@@ -1049,7 +1038,7 @@ def invoke_with_fallback(messages, tools=None, selected_model=None):
         
     except Exception as e:
         error_msg = str(e)
-        # BUG FIX: Catch Groq's 400 "tool_use_failed" and extract the failed generation
+        # Catch Groq's 400 "tool_use_failed" and extract the failed generation
         if "tool_use_failed" in error_msg:
             print("Detected Groq tool-use failure. Attempting emergency recovery from error message...")
             import re
@@ -1058,14 +1047,12 @@ def invoke_with_fallback(messages, tools=None, selected_model=None):
             if failed_gen:
                 content = failed_gen.group(1)
                 print(f"Emergency Found: {content[:100]}...")
-                # Create a "dirty" response to be fixed by recover_tool_calls
                 dirty_response = AIMessage(content=content)
                 return recover_tool_calls(dirty_response)
         
         # Defensive Check: Ensure provider is a dict before logging
         p_name = provider.get("name", "Unknown") if isinstance(provider, dict) else "Index-Error"
         print(f" {p_name} error: {str(e)}")
-        # NO AUTOMATIC FALLBACK - Let user switch manually in the UI
         raise e
 
 
@@ -1088,7 +1075,7 @@ def llm_node(state: AgentState):
     
     messages = manage_context_window(messages)
     
-    # System message - SELECTOR PERSONA (Refined for deterministic tool use)
+    # System message - SELECTOR PERSONA
     if not any(isinstance(msg, SystemMessage) for msg in messages):
         system_msg = SystemMessage(content="""You are Aloysia, an AI Document Reviewer. 
 
@@ -1111,7 +1098,7 @@ When using a tool, output the raw JSON tool call inside a markdown block:
         
         # LOG RAW CONTENT: See why tools are being skipped
         if hasattr(response, 'content') and response.content:
-            print(f"--- LLM Raw Content: {response.content[:200]}... ---")
+            print(f"LLM Raw Content: {response.content[:200]}...")
             
         return {
             "messages": [response],
@@ -1120,9 +1107,6 @@ When using a tool, output the raw JSON tool call inside a markdown block:
     except Exception as e:
         error_msg = str(e)
         print(f"LLM Error: {error_msg[:200]}")
-        
-        # If we reach here, even the emergency recovery in invoke_with_fallback failed
-        # or it was a different type of error (Rate Limit, etc.)
         raise e
 
 
@@ -1140,7 +1124,6 @@ def quality_control_agent_node(state: AgentState):
 
 
     if not tool_messages or loop_count >= 1:
-        # If no tools were used, let's skip QC then
         return {"quality_passed": True, "messages": []}
     
     user_messages = [msg for msg in state["messages"]

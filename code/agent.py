@@ -1068,11 +1068,6 @@ def invoke_with_fallback(messages, tools=None, selected_model=None):
         # NO AUTOMATIC FALLBACK - Let user switch manually in the UI
         raise e
 
-def _initialize_llm():
-    """Initialize the LLM based on current provider (legacy compatibility)"""
-    provider = _get_current_provider()
-    return provider["init"]()
-
 
 def llm_node(state: AgentState):
     """The agent's brain"""
@@ -1168,7 +1163,7 @@ def quality_control_agent_node(state: AgentState):
         The document search found no relevant information for: "{original_query}"
 
         You should now:
-        1. Inform the user that the informatio wasn't found in their documents
+        1. Inform the user that the information wasn't found in their documents
         2. Ask if they would like to search the web for this information
         3. Wait for user confirmation before using web_search
 

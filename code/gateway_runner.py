@@ -32,12 +32,41 @@ class RedirectHandler(BaseHTTPRequestHandler):
             status_color = "green" if is_alive else "red"
             status_text = "RUNNING" if is_alive else "CRASHED/STOPPED"
             
+            bot_username = os.getenv("BOT_USERNAME", "Aloysia_telegram_bot")
             html = f"""
-            <html><body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
-                <h1>Aloysia System Status</h1>
-                <p>Bot Thread: <b style="color: {status_color};">{status_text}</b></p>
-                <p><a href="/">Back to Bot</a></p>
-            </body></html>
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Aloysia Status</title>
+                <style>
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                           text-align: center; padding: 60px 20px; background: #f5f5f5; }}
+                    .card {{ background: white; border-radius: 16px; padding: 40px;
+                             max-width: 400px; margin: 0 auto; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }}
+                    h1 {{ font-size: 1.5rem; margin-bottom: 8px; color: #1a1a1a; }}
+                    .status {{ font-size: 2rem; font-weight: 700; color: {status_color}; margin: 16px 0; }}
+                    .btn {{ display: inline-block; margin-top: 24px; padding: 14px 32px;
+                            background: #0088cc; color: white; border-radius: 12px;
+                            text-decoration: none; font-weight: 600; font-size: 1rem; }}
+                    .btn:hover {{ background: #006faa; }}
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>Aloysia</h1>
+                    <p style="color:#666;">Bot Status</p>
+                    <div class="status">{status_text}</div>
+                    <!-- tg:// opens the Telegram app on mobile; JS fallback covers browsers that ignore it -->
+                    <a class="btn"
+                       href="tg://resolve?domain={bot_username}"
+                       onclick="setTimeout(function(){{ window.location='https://t.me/{bot_username}' }}, 600); return true;">
+                       💬 Open in Telegram
+                    </a>
+                </div>
+            </body>
+            </html>
             """
             self.wfile.write(html.encode())
             return
@@ -59,37 +88,37 @@ def check_environment():
     missing = [var for var in required_vars if not os.getenv(var)]
     
     if missing:
-        print("❌ CRITICAL ERROR: Missing environment variables!")
+        print("CRITICAL ERROR: Missing environment variables!")
         for var in missing:
             print(f"   - {var} is NOT SET")
         print("\nPlease check your Render Dashboard -> Environment tab.")
         return False
     
-    print("✅ Environment Check Passed. All required keys found.")
+    print("Environment Check Passed. All required keys found.")
     return True
 
 def run_gateway():
     """Run a tiny HTTP gateway to redirect to Telegram and satisfy Render."""
     if not check_environment():
-        print("🛑 Gateway will still run to keep Render happy, but Bot will likely fail.")
+        print("Gateway will still run to keep Render happy, but Bot will likely fail.")
         
     port = int(os.getenv("PORT", "10000"))
-    print(f"🚀 Telegram Gateway starting on port {port}...")
+    print(f"Telegram Gateway starting on port {port}...")
     server = HTTPServer(('0.0.0.0', port), RedirectHandler)
     server.serve_forever()
 
 def run_telegram_bot():
     """Run the Telegram bot in its own event loop with a cooldown."""
     import time
-    print("🤖 Telegram Bot: Entering 30s cooldown to prioritize Gateway startup...")
+    print("Telegram Bot: Entering 30s cooldown to prioritize Gateway startup...")
     time.sleep(30)
     
-    print("🤖 Starting Telegram Bot...")
+    print("Starting Telegram Bot...")
     try:
         from code.telegram_bot import main as bot_main
         bot_main()
     except Exception as e:
-        print(f"❌ Telegram Bot error: {e}")
+        print(f"Telegram Bot error: {e}")
         import traceback
         traceback.print_exc()
 
@@ -102,11 +131,11 @@ if __name__ == "__main__":
     
     # 2. Start Redirect Gateway in the main thread
     port = int(os.getenv("PORT", "10000"))
-    print(f"🚀 Telegram Gateway starting on port {port}...")
+    print(f"Telegram Gateway starting on port {port}...")
     server = HTTPServer(('0.0.0.0', port), RedirectHandler)
     
     def signal_handler(sig, frame):
-        print(f"🛑 Received signal {sig}, shutting down...")
+        print(f"Received signal {sig}, shutting down...")
         # Closing the server will break the serve_forever loop
         threading.Thread(target=server.shutdown).start()
         sys.exit(0)

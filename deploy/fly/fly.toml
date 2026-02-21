@@ -1,0 +1,40 @@
+app = "aloysia-bot"
+primary_region = "sin"
+kill_signal = "SIGINT"
+kill_timeout = "5s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  strategy = "immediate"
+
+[env]
+  PORT = "8080"
+  PYTHONUNBUFFERED = "1"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.http_checks]]
+    interval = "60s"
+    grace_period = "30s"
+    method = "get"
+    path = "/health"
+    protocol = "http"
+    timeout = "10s"
+    tls_skip_verify = true
+
+  [[services.tcp_checks]]
+    interval = "60s"
+    grace_period = "30s"
+    timeout = "10s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

@@ -6,12 +6,10 @@ langchain-groq>=0.1.0
 langchain-google-genai>=2.0.0
 langgraph
 tavily-python
-langchain_experimental
 langchain-community
 
 # Vector database & embeddings
 fastembed
-langchain-community
 
 # Document parsing
 PyPDF2>=3.0.0
@@ -19,7 +17,6 @@ python-docx>=1.1.0
 
 # Utilities
 python-dotenv>=1.0.1
-pathlib
 typing-extensions>=4.9.0
 
 # arXiv integration

@@ -6,7 +6,7 @@ Clean Minimalist Theme - Educational Product Design
 import streamlit as st
 from pathlib import Path
 import sys, traceback
-import os, chromadb
+import os
 import warnings
 import uuid
 from PyPDF2 import PdfReader
@@ -465,9 +465,6 @@ def load_document_from_folder(folder_path: Path):
 def process_query(query: str):
     """Process user query through the agent"""
 
-    print(f"Processing query: {query}")
-    print(f"{'='*50}\n")
-
     if not st.session_state.agent:
         if not initialize_agent():
             return "Failed to initialize agent."
@@ -475,24 +472,21 @@ def process_query(query: str):
     try:
         from langchain_core.messages import HumanMessage, AIMessage
 
-        # Add user message to conversation
-        st.session_state.messages.append({
-            "role": "user",
-            "content": query
-        })
-        
-        # Build history from session state (Limit to last 10 for performance)
+        # Build history from existing messages BEFORE adding the new one
         history = []
         max_history = 10
-        relevant_messages = st.session_state.messages[-(max_history+1):-1] if len(st.session_state.messages) > max_history else st.session_state.messages[:-1]
+        prior_messages = st.session_state.messages[-max_history:] if len(st.session_state.messages) > max_history else st.session_state.messages
         
-        for msg in relevant_messages:
+        for msg in prior_messages:
             if msg["role"] == "user":
                 history.append(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
                 history.append(AIMessage(content=msg["content"]))
         
-        # Current message (Always included)
+        # Add the current message to session state for UI persistence
+        st.session_state.messages.append({"role": "user", "content": query})
+        
+        # Also add to agent history (not duplicated — session state append above is for UI only)
         history.append(HumanMessage(content=query))
 
         initial_state = {
@@ -617,16 +611,21 @@ with st.sidebar:
             docs = load_document_from_folder(upload_dir)
 
             if docs:
-                st.success(f"Loaded {len(docs)} chunks")
-
-                
+                st.success(f"Processed {len(docs)} chunks from {len(uploaded_files)} file(s)...")
                 try:
                     if initialize_agent():
-                        from code.rag_init import initialize_rag
-                        rag = initialize_rag()
-                        st.success("Added to knowledge base")
+                        from code.rag_init import get_rag
+                        rag = get_rag()
+                        user_id = st.session_state.get("user_id", "default_user")
+                        # Set source filename on each chunk before adding to Supabase
+                        for doc in docs:
+                            if "metadata" in doc and "source" not in doc:
+                                doc["source"] = doc["metadata"].get("source", "uploaded_file")
+                        rag.db.add_doc(docs, user_id=user_id)
+                        st.session_state.pop('cached_sources', None)  # Force library refresh
+                        st.success(f"Added to your knowledge base!")
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                    st.error(f"Error adding to knowledge base: {str(e)}")
                     traceback.print_exc()
 
     # Show loaded documents (Cached list to avoid DB lag)

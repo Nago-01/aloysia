@@ -6,11 +6,10 @@ import traceback
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables
+
 load_dotenv()
 
 # Add project root to path to allow imports from 'code' package
-# This fixes "ModuleNotFoundError: No module named 'code'"
 project_root = str(Path(__file__).resolve().parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -62,7 +61,8 @@ class AloysiaBot:
             f"<b>Quick Start:</b>\n"
             f"1. <b>Upload a paper</b> - I'll read and index it for your personal library.\n"
             f"2. <b>Ask a question</b> - I'll search your papers and provide cited answers.\n"
-            f"3. <b>Sync Accounts</b> - Use <code>/link your@email.com</code> to sync your knowledge base with the Aloysia Web Portal.\n\n"
+            f"3. <b>Search for papers on ArXiv<b> - I'll fetch ArXiv papers based on your topic of interest.\n"
+            f"4. <b>Sync Accounts</b> - Use <code>/link your@email.com</code> to sync your knowledge base with the Aloysia Web Portal.\n\n"
             f"📚 Use /library to see your papers.\n"
             f"❓ Use /help for all commands."
         )
@@ -89,14 +89,14 @@ class AloysiaBot:
         chat_id = str(update.effective_chat.id)
         if not context.args:
             await update.message.reply_html(
-                "❌ <b>Missing Email</b>\n\nUsage: <code>/link user@example.com</code>\n\n"
+                "<b>Missing Email</b>\n\nUsage: <code>/link user@example.com</code>\n\n"
                 "Once linked, your Telegram bot will share the same library as your Web App."
             )
             return
 
         email = context.args[0].lower().strip()
         if "@" not in email or "." not in email:
-            await update.message.reply_text("❌ Please provide a valid email address.")
+            await update.message.reply_text("Please provide a valid email address.")
             return
 
         success = self.db.link_user(chat_id, email)
@@ -106,7 +106,7 @@ class AloysiaBot:
                 "All papers you upload here will appear on the Web App, and vice versa."
             )
         else:
-            await update.message.reply_text("❌ Failed to link account. Please try again later.")
+            await update.message.reply_text("Failed to link account. Please try again later.")
 
     async def clear_state(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clear conversation history (UI level for now)."""
@@ -120,7 +120,7 @@ class AloysiaBot:
         await update.message.reply_text(f"Checking library for {user_id if '@' in user_id else 'your account'}...")
         
         try:
-            # Fetch all metadata but filter by resolved user_id
+            # Fetching all metadata but filtering by resolved user_id
             results = self.db.list_all_metadata(user_id=user_id) 
             
             user_docs = set()
@@ -135,14 +135,14 @@ class AloysiaBot:
                 
         except Exception as e:
             logger.error(f"Library error: {e}")
-            await update.message.reply_text("❌ creating library list failed.")
+            await update.message.reply_text("creating library list failed.")
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle file uploads."""
         document = update.message.document
         chat_id = str(update.effective_chat.id)
         
-        # Check extensions
+        # Checking extensions
         file_ext = Path(document.file_name).suffix.lower()
         if file_ext not in ['.pdf', '.docx', '.txt']:
             await update.message.reply_text("Please upload PDF, DOCX or TXT files only.")
@@ -154,7 +154,7 @@ class AloysiaBot:
         status_msg = await update.message.reply_text(f"Downloading <b>{document.file_name}</b>...", parse_mode="HTML")
         
         try:
-            # Download file
+            # Downloading file
             await file.download_to_drive(file_path)
             
             await context.bot.edit_message_text(
@@ -174,7 +174,7 @@ class AloysiaBot:
             
             user_id = self._resolve_user_id(chat_id)
             
-            # Add to DB (run in thread to avoid blocking the event loop)
+            # Adding to DB 
             if chunks_data:
                 await context.bot.edit_message_text(
                     f"Uploading <b>{document.file_name}</b> ({len(chunks_data)} sections)...\n<i>This may take 1-3 minutes.</i>",
@@ -203,7 +203,7 @@ class AloysiaBot:
             logger.error(f"Upload error: {e}")
             traceback.print_exc()
             await context.bot.edit_message_text(
-                f"❌ Error processing file: {str(e)}",
+                f"Error processing file: {str(e)}",
                 chat_id=chat_id,
                 message_id=status_msg.message_id
             )
@@ -216,11 +216,11 @@ class AloysiaBot:
         if len(query) < 3:
             return
 
-        # Send typing action
+        # Sending typing action
         await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.TYPING)
         
         # Placeholder message
-        thinking_msg = await update.message.reply_text("🤔 Thinking...")
+        thinking_msg = await update.message.reply_text("Thinking...")
         
         try:
             # Construct Agent State
@@ -241,7 +241,7 @@ class AloysiaBot:
                 "user_id": user_id  # RLS Enforced Isolation!
             }
             
-            # Run Agent in a separate thread to avoid blocking the event loop
+            # Running Agent in a separate thread to avoid blocking the event loop
             # and add a timeout to prevent indefinite hangs
             token = user_id_var.set(user_id)
             try:
@@ -249,7 +249,7 @@ class AloysiaBot:
                 def _run_agent_sync():
                     return self.agent.invoke(initial_state)
 
-                # 3 minute timeout for complex RAG tasks
+                # Three minutes timeout for complex RAG tasks
                 result = await asyncio.wait_for(
                     asyncio.to_thread(_run_agent_sync), 
                     timeout=180.0
@@ -257,7 +257,7 @@ class AloysiaBot:
             except asyncio.TimeoutError:
                 logger.error("Agent execution timed out after 180s")
                 await context.bot.edit_message_text(
-                    "❌ I'm sorry, the research task took too long (Timeout). Please try a simpler question.",
+                    "I'm sorry, the research task took too long (Timeout). Please try a simpler question.",
                     chat_id=chat_id,
                     message_id=thinking_msg.message_id
                 )
@@ -268,9 +268,7 @@ class AloysiaBot:
             if result.get("messages"):
                 final_response = result["messages"][-1].content
                 
-                # Format response (Markdown cleaning if needed)
-                # Telegram supports a subset of HTML/Markdown
-                
+                # Format response                
                 await context.bot.edit_message_text(
                     final_response,
                     chat_id=chat_id,
@@ -288,7 +286,7 @@ class AloysiaBot:
             logger.error(f"Query error: {e}")
             traceback.print_exc()
             await context.bot.edit_message_text(
-                f"❌ Error: {str(e)}",
+                f"Error: {str(e)}",
                 chat_id=chat_id,
                 message_id=thinking_msg.message_id
             )
@@ -321,10 +319,6 @@ def main():
     """Start the bot."""
     bot = AloysiaBot()
     
-    # Load environment variables if needed
-    # from dotenv import load_dotenv
-    # load_dotenv()
-    
     # Ensure event loop policy for Windows
     if sys.platform == 'win32':
         import asyncio
@@ -333,14 +327,11 @@ def main():
     # Build app
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        print("❌ TELEGRAM_BOT_TOKEN not found. Set it in your environment variables.")
+        print("TELEGRAM_BOT_TOKEN not found. Set it in your environment variables.")
         return
 
-    print("🤖 Aloysia Telegram Bot Starting...")
+    print("Aloysia Telegram Bot Starting...")
     
-    # We use a helper or just define it here. 
-    # To be safe and clean, let's use the bot's own registration logic if it had one, 
-    # but since main is the entry point for Render, let's just fix it here.
     application = Application.builder().token(token).build()
 
     # Add handlers
@@ -357,11 +348,10 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
     # Run
-    print("✅ Bot is polling...")
-    # NOTE: When running in a thread (via gateway_runner.py), 
-    # we MUST disable signal handling (stop_signals=None) 
-    # and not close the loop in this thread if handled elsewhere.
-    # We set drop_pending_updates=True to clear any legacy webhook/conflict state on start.
+    print("Bot is polling...")
+    # When running in a thread via gateway_runner.py, 
+    # disable signal handling and not close the loop in this thread if handled elsewhere.
+    # and set drop_pending_updates=True to clear any legacy webhook/conflict state on start.
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
